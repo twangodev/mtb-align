@@ -1,4 +1,5 @@
 use crate::Gray;
+use crate::strips::fill_rows;
 
 /// How a level of the pyramid is halved.
 ///
@@ -30,15 +31,15 @@ pub fn shrink2(gray: &Gray, shrink: Shrink) -> Gray {
     let source = gray.as_slice();
     let stride = gray.width();
 
-    let mut shrunk = Vec::with_capacity(width * height);
+    let mut shrunk = vec![0; width * height];
 
-    for y in 0..height {
+    fill_rows(&mut shrunk, width, |y, row| {
         let top = 2 * y * stride;
         let bottom = top + stride;
 
-        for x in 0..width {
+        for (x, sample) in row.iter_mut().enumerate() {
             let left = 2 * x;
-            shrunk.push(match shrink {
+            *sample = match shrink {
                 Shrink::Average => {
                     // Summed as u16: four saturated samples overflow a u8 three
                     // times over. The +2 rounds the mean to nearest.
@@ -49,9 +50,9 @@ pub fn shrink2(gray: &Gray, shrink: Shrink) -> Gray {
                     ((total + 2) / 4) as u8
                 }
                 Shrink::Subsample => source[top + left],
-            });
+            };
         }
-    }
+    });
 
     Gray::from_vec(shrunk, width, height)
 }

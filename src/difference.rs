@@ -1,4 +1,5 @@
 use crate::bitmap::WORD_BITS;
+use crate::strips::sum_rows;
 use crate::{Bitmaps, Shift};
 
 /// How many pixels the two exposures disagree about at one candidate offset.
@@ -31,18 +32,17 @@ pub fn disagreement(reference: &Bitmaps, target: &Bitmaps, shift: Shift) -> u64 
     );
 
     let words_per_row = reference.threshold.words_per_row();
-    let mut total = 0;
 
-    for y in 0..height {
+    sum_rows(height, |y| {
         // A row drawn from outside the target contributes nothing: both of the
         // target's bitmaps are zero there, and the exclusion term rules the
         // whole row out. Ward gets the same effect by clearing the exposed
         // border of the shifted bitmaps.
         let Ok(source_y) = usize::try_from(y as i64 - shift.y as i64) else {
-            continue;
+            return 0;
         };
         if source_y >= height {
-            continue;
+            return 0;
         }
 
         let reference_threshold = reference.threshold.row(y);
@@ -50,20 +50,20 @@ pub fn disagreement(reference: &Bitmaps, target: &Bitmaps, shift: Shift) -> u64 
         let target_threshold = target.threshold.row(source_y);
         let target_exclusion = target.exclusion.row(source_y);
 
-        for word in 0..words_per_row {
-            // Bits past the width can pick up whatever the shift drags in, but
-            // the reference exclusion bitmap holds its padding clear, so they
-            // are masked away before they can be counted.
-            let disagrees = (reference_threshold[word]
-                ^ shifted_word(target_threshold, word, shift.x))
-                & reference_exclusion[word]
-                & shifted_word(target_exclusion, word, shift.x);
+        (0..words_per_row)
+            .map(|word| {
+                // Bits past the width can pick up whatever the shift drags in,
+                // but the reference exclusion bitmap holds its padding clear,
+                // so they are masked away before they can be counted.
+                let disagrees = (reference_threshold[word]
+                    ^ shifted_word(target_threshold, word, shift.x))
+                    & reference_exclusion[word]
+                    & shifted_word(target_exclusion, word, shift.x);
 
-            total += disagrees.count_ones() as u64;
-        }
-    }
-
-    total
+                disagrees.count_ones() as u64
+            })
+            .sum()
+    })
 }
 
 /// The word landing on destination word `index` once `row` moves right by

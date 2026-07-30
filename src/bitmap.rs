@@ -1,3 +1,5 @@
+use crate::strips::fill_rows;
+
 /// Bits per word. Ward counts 32 or 64 at a time; this crate always takes 64.
 pub(crate) const WORD_BITS: usize = u64::BITS as usize;
 
@@ -72,14 +74,12 @@ impl Bitmap {
     pub(crate) fn packed(
         width: usize,
         height: usize,
-        mut bit: impl FnMut(usize, usize) -> bool,
+        bit: impl Fn(usize, usize) -> bool + Send + Sync,
     ) -> Self {
         let mut bitmap = Self::zeros(width, height);
         let words_per_row = bitmap.words_per_row;
 
-        for y in 0..height {
-            let row = &mut bitmap.words[y * words_per_row..(y + 1) * words_per_row];
-
+        fill_rows(&mut bitmap.words, words_per_row, |y, row| {
             for (index, word) in row.iter_mut().enumerate() {
                 let base = index * WORD_BITS;
                 // The last word of a row stops at the width, which is what
@@ -93,7 +93,7 @@ impl Bitmap {
 
                 *word = packed;
             }
-        }
+        });
 
         bitmap
     }

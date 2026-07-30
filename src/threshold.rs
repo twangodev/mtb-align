@@ -45,10 +45,7 @@ impl Default for Percentile {
 /// until the last bin is consumed, leaving the threshold at 256 and the
 /// threshold bitmap empty. OpenCV returns 256 here too.
 pub fn threshold(gray: &Gray, percentile: Percentile) -> u16 {
-    let mut histogram = [0u64; LEVELS];
-    for &sample in gray.as_slice() {
-        histogram[sample as usize] += 1;
-    }
+    let histogram = histogram(gray.as_slice());
 
     // Kept step for step with OpenCV's scan. The running sum is tested before
     // each bin is folded in, so the answer is one past the bin that tipped it.
@@ -61,6 +58,43 @@ pub fn threshold(gray: &Gray, percentile: Percentile) -> u16 {
     }
 
     level as u16
+}
+
+/// Counts how many samples sit at each of the 256 levels.
+///
+/// Counting is commutative, so the threads can be given a slice each and their
+/// tallies added up afterwards; a shared histogram would need a lock per pixel.
+fn histogram(samples: &[u8]) -> [u64; LEVELS] {
+    let tally = |samples: &[u8]| {
+        let mut bins = [0u64; LEVELS];
+        for &sample in samples {
+            bins[sample as usize] += 1;
+        }
+        bins
+    };
+
+    #[cfg(feature = "rayon")]
+    {
+        use rayon::prelude::*;
+
+        // Enough rows per thread that the per-slice histogram is worth setting
+        // up, and small enough that the tail does not idle everything else.
+        const CHUNK: usize = 1 << 16;
+
+        if samples.len() > CHUNK {
+            return samples.par_chunks(CHUNK).map(tally).reduce(
+                || [0; LEVELS],
+                |mut carried, bins| {
+                    for (total, count) in carried.iter_mut().zip(bins) {
+                        *total += count;
+                    }
+                    carried
+                },
+            );
+        }
+    }
+
+    tally(samples)
 }
 
 /// One exposure reduced to the two bitmaps the search compares.

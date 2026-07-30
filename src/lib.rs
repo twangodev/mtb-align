@@ -6,6 +6,7 @@ mod difference;
 mod geometry;
 mod gray;
 mod shrink;
+mod strips;
 mod threshold;
 
 pub use align::{Options, align_stack, shift};
