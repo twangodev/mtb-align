@@ -40,8 +40,18 @@ jobs:
       - run: cargo test --features "${{ matrix.features }}"
       - run: cargo build --examples --features "${{ matrix.features }}"
 
+  fixtures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
+
+      - run: uv run --with opencv-python-headless --with numpy tests/fixtures/generate.py
+      - name: Fixtures match regenerated output
+        run: git diff --exit-code tests/fixtures/opencv.txt
+
   release-please:
-    needs: [check, test]
+    needs: [check, test, fixtures]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
