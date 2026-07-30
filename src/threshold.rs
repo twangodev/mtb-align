@@ -63,27 +63,40 @@ pub fn threshold(gray: &Gray, percentile: Percentile) -> u16 {
     level as u16
 }
 
-/// The threshold bitmap and the exclusion bitmap for one exposure.
+/// One exposure reduced to the two bitmaps the search compares.
 ///
-/// The threshold bitmap is set where a sample is above the threshold. The
-/// exclusion bitmap is *clear* within `tolerance` of it, where the sample is
-/// noise-dominated and its side of the threshold cannot be trusted.
-pub fn compute_bitmaps(gray: &Gray, percentile: Percentile, tolerance: u8) -> (Bitmap, Bitmap) {
+/// They travel together because the exclusion bitmap is only meaningful against
+/// the threshold it was cut from.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Bitmaps {
+    /// Set where a sample is above the threshold.
+    pub threshold: Bitmap,
+    /// *Clear* within the noise tolerance of the threshold, where a sample's
+    /// side of the threshold cannot be trusted.
+    pub exclusion: Bitmap,
+}
+
+/// Reduces one exposure to its threshold and exclusion bitmaps.
+pub fn compute_bitmaps(gray: &Gray, percentile: Percentile, tolerance: u8) -> Bitmaps {
     let cut = threshold(gray, percentile);
     let tolerance = tolerance as u16;
 
-    let mut threshold_bitmap = Bitmap::zeros(gray.width(), gray.height());
-    let mut exclusion_bitmap = Bitmap::zeros(gray.width(), gray.height());
+    let mut bitmaps = Bitmaps {
+        threshold: Bitmap::zeros(gray.width(), gray.height()),
+        exclusion: Bitmap::zeros(gray.width(), gray.height()),
+    };
 
     for y in 0..gray.height() {
         for x in 0..gray.width() {
             let sample = gray.sample(x, y) as u16;
-            threshold_bitmap.set(x, y, sample > cut);
-            exclusion_bitmap.set(x, y, sample.abs_diff(cut) > tolerance);
+            bitmaps.threshold.set(x, y, sample > cut);
+            bitmaps
+                .exclusion
+                .set(x, y, sample.abs_diff(cut) > tolerance);
         }
     }
 
-    (threshold_bitmap, exclusion_bitmap)
+    bitmaps
 }
 
 #[cfg(test)]
@@ -118,7 +131,7 @@ mod tests {
 
     #[test]
     fn the_threshold_bitmap_marks_only_what_is_above() {
-        let (tb, _) = compute_bitmaps(&ramp(), Percentile::MEDIAN, 4);
+        let tb = compute_bitmaps(&ramp(), Percentile::MEDIAN, 4).threshold;
 
         assert_eq!(tb.count_ones(), 127);
         assert!(!tb.get(128 % 16, 128 / 16), "the threshold itself is below");
@@ -129,7 +142,7 @@ mod tests {
     /// tolerance of the threshold: here 124 through 132, nine values.
     #[test]
     fn the_exclusion_bitmap_clears_the_band_around_the_threshold() {
-        let (_, eb) = compute_bitmaps(&ramp(), Percentile::MEDIAN, 4);
+        let eb = compute_bitmaps(&ramp(), Percentile::MEDIAN, 4).exclusion;
 
         assert_eq!(eb.count_ones(), 256 - 9);
         for value in 124..=132usize {
@@ -146,7 +159,7 @@ mod tests {
     /// comparison is strict.
     #[test]
     fn a_zero_tolerance_still_excludes_the_threshold_value() {
-        let (_, eb) = compute_bitmaps(&ramp(), Percentile::MEDIAN, 0);
+        let eb = compute_bitmaps(&ramp(), Percentile::MEDIAN, 0).exclusion;
 
         assert_eq!(eb.count_ones(), 255);
         assert!(!eb.get(128 % 16, 128 / 16));
@@ -158,7 +171,10 @@ mod tests {
     fn a_uniform_image_excludes_itself_entirely() {
         let white = Gray::from_vec(vec![255; 64], 8, 8);
 
-        let (tb, eb) = compute_bitmaps(&white, Percentile::MEDIAN, 4);
+        let Bitmaps {
+            threshold: tb,
+            exclusion: eb,
+        } = compute_bitmaps(&white, Percentile::MEDIAN, 4);
 
         assert_eq!(tb.count_ones(), 0);
         assert_eq!(eb.count_ones(), 0);
@@ -166,7 +182,10 @@ mod tests {
 
     #[test]
     fn the_bitmaps_match_the_image_dimensions() {
-        let (tb, eb) = compute_bitmaps(&Gray::from_vec(vec![7; 12], 4, 3), Percentile::MEDIAN, 4);
+        let Bitmaps {
+            threshold: tb,
+            exclusion: eb,
+        } = compute_bitmaps(&Gray::from_vec(vec![7; 12], 4, 3), Percentile::MEDIAN, 4);
 
         assert_eq!((tb.width(), tb.height()), (4, 3));
         assert_eq!((eb.width(), eb.height()), (4, 3));
