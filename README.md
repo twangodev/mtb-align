@@ -21,30 +21,23 @@ let shifts = align_stack(&exposures, exposures.len() / 2, &Options::default());
 let crop = common_crop(&shifts, width, height);
 ```
 
-Each exposure is thresholded at its own median, which is a rank and so survives
-any monotonic change of exposure: the same scene gives the same bitmap at any
-shutter speed. That is what lets the frames be registered *before* the response
-curve is solved, which otherwise needs them registered first. Pixels within a
-few levels of the threshold are noise rather than scene, and are excluded.
-Comparison is then an XOR down an image pyramid, a pixel of search per level.
+Thresholding at the median gives a bitmap that survives any monotonic change of
+exposure, so frames can be registered before the response curve is solved, which
+otherwise needs them registered. Pixels near the threshold are noise and get
+excluded; comparison is an XOR down a pyramid, a pixel of search per level.
 
-Translation only. Ward reports about one sequence in ten needing rotation that
-this cannot give it.
+No rotation. Ward reports about one sequence in ten wanting it.
 
 ```sh
 cargo run --example align                 # a synthetic five-frame bracket
 cargo run --release --example bench       # throughput at sensor resolution
 ```
 
-Ward's table calls the pyramid step a subsample and his text calls it a filter;
-`Shrink::Average` takes the second reading and is the default, `Shrink::Subsample`
-takes the first and reproduces OpenCV. `Options::opencv()` selects the whole set
-of its conventions, which is what the fixture tests are recorded against.
+`Shrink::Average` takes Ward's "filter it down" and is the default;
+`Options::opencv()` picks `AlignMTB`'s conventions, which the fixtures record.
 
 The `rayon` feature parallelises the row passes. A 51 MP pair aligns in 211 ms
-on one core and 50 ms across 48, so it scales to about four cores' worth and
-then runs out of memory bandwidth — a threshold bitmap is one bit per pixel, and
-there is very little arithmetic per byte to hide the loads behind.
+on one core and 50 ms across 48, then runs out of memory bandwidth.
 
 ## Acknowledgements
 
@@ -52,17 +45,14 @@ Ward, G. (2003). "Fast, Robust Image Registration for Compositing High Dynamic
 Range Photographs from Hand-held Exposures." *Journal of Graphics Tools*, 8(2),
 17-30. [doi:10.1080/10867651.2003.10487583](https://doi.org/10.1080/10867651.2003.10487583)
 
-Reinhard, E., Ward, G., Pattanaik, S. and Debevec, P. *High Dynamic Range
-Imaging*. Morgan Kaufmann. The book chapter version, with more context.
+Reinhard, Ward, Pattanaik and Debevec, *High Dynamic Range Imaging* (Morgan
+Kaufmann), for the book chapter version.
 
 Evangelidis, G. D. and Psarakis, E. Z. (2008). "Parametric Image Alignment Using
 Enhanced Correlation Coefficient Maximization." *IEEE TPAMI*, 30(10), 1858-1865.
-[doi:10.1109/TPAMI.2008.113](https://doi.org/10.1109/TPAMI.2008.113) — where to
-go when the sequence does need rotation. OpenCV implements it as
-`findTransformECC`.
+[doi:10.1109/TPAMI.2008.113](https://doi.org/10.1109/TPAMI.2008.113) — for the
+sequences that do need rotation. OpenCV has it as `findTransformECC`.
 
-OpenCV's `AlignMTB`, whose conventions this follows where the paper is silent or
-ambiguous, and whose output the fixture tests are recorded from.
-
-Hugin's `align_image_stack` and pfstools also implement this, and both are GPL.
-Neither was consulted.
+OpenCV's `AlignMTB`, whose conventions this follows and whose output the fixture
+tests are recorded from. Hugin's `align_image_stack` and pfstools are GPL, and
+were not consulted.
