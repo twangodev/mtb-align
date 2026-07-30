@@ -17,9 +17,11 @@ const CANDIDATES: [(i32, i32); 9] = [
 /// How the search is run.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Options {
-    /// Ward's `shift_bits`, reaching `±(2^bits - 1)` pixels; six on a full frame.
-    /// Each is another halving, and the coarsest level guesses with only ±1 to
-    /// correct it after, so small images want fewer, not more.
+    /// Ward's `shift_bits`, reaching `±(2^bits - 1)` pixels. Six is his figure for
+    /// the three megapixel frames of 2003; the same shake spans four times the
+    /// pixels at fifty, which wants eight. Each bit is another halving, and the
+    /// coarsest level guesses with only ±1 to correct it after, so small images
+    /// want fewer, not more.
     pub bits: u32,
     /// How far from the threshold a sample must sit before it is trusted.
     pub tolerance: u8,
