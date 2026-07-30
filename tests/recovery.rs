@@ -1,6 +1,6 @@
 //! Photographs one synthetic scene twice a known distance apart and asks for
 //! that distance back, degrading the second exposure the way a real bracket
-//! would — noise, a change of shutter speed, both at once.
+//! would: noise, a change of shutter speed, both at once.
 
 mod common;
 

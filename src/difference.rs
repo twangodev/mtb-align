@@ -4,7 +4,7 @@ use crate::{Bitmaps, Shift};
 
 /// Ward's `BitmapTotal` of `(tb1 XOR shift(tb2)) AND eb1 AND shift(eb2)`, counted
 /// without materialising any of it. The exclusion terms mask the *result* of the
-/// XOR, never its operands — his footnote 4.
+/// XOR, never its operands: his footnote 4.
 ///
 /// Panics unless every bitmap has the same dimensions.
 pub fn disagreement(reference: &Bitmaps, target: &Bitmaps, shift: Shift) -> u64 {

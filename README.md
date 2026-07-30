@@ -39,8 +39,8 @@ cargo run --release --example bench       # throughput at sensor resolution
 `Options::opencv()` picks `AlignMTB`'s conventions, which the fixtures record.
 
 The `rayon` feature parallelises the row passes. A 51 MP pair aligns in 211 ms
-on one core and 50 ms across 48. Almost all of that is building the bitmaps —
-streaming the 8-bit pyramid — rather than searching them; the nine XOR passes
+on one core and 50 ms across 48. Almost all of that is building the bitmaps,
+streaming the 8-bit pyramid, rather than searching them; the nine XOR passes
 over a 1-bit image are 5% of the time.
 
 ## Acknowledgements
@@ -54,7 +54,7 @@ Kaufmann), for the book chapter version.
 
 Evangelidis, G. D. and Psarakis, E. Z. (2008). "Parametric Image Alignment Using
 Enhanced Correlation Coefficient Maximization." *IEEE TPAMI*, 30(10), 1858-1865.
-[doi:10.1109/TPAMI.2008.113](https://doi.org/10.1109/TPAMI.2008.113) — for the
+[doi:10.1109/TPAMI.2008.113](https://doi.org/10.1109/TPAMI.2008.113), for the
 sequences that do need rotation. OpenCV has it as `findTransformECC`.
 
 OpenCV's `AlignMTB`, whose conventions this follows and whose output the fixture

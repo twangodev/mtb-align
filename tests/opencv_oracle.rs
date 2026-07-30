@@ -1,5 +1,5 @@
 //! Checks each layer against answers recorded from OpenCV's `AlignMTB`, whose
-//! conventions this follows — so a disagreement is a bug here, not a difference
+//! conventions this follows, so a disagreement is a bug here, not a difference
 //! of opinion. Regenerate with `tests/fixtures/generate.py`.
 //!
 //! The layers are separate on purpose: `calculateShift` failing alone means the

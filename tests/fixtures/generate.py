@@ -39,8 +39,8 @@ def downsample(src):
     protected, so unlike everything else here it cannot be called. The C++ takes
     `src[2y][2x]` into a `Mat(rows / 2, cols / 2)`.
 
-    The end-to-end `align` cases cannot pin this — the search converges on the
-    same answer whichever corner of each block is taken.
+    The end-to-end `align` cases cannot pin this, because the search converges on
+    the same answer whichever corner of each block is taken.
     """
     height, width = src.shape
     return np.ascontiguousarray(src[: height // 2 * 2 : 2, : width // 2 * 2 : 2])
