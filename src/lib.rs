@@ -1,5 +1,6 @@
 //! Median threshold bitmap alignment for handheld HDR exposures.
 
+mod align;
 mod bitmap;
 mod difference;
 mod geometry;
@@ -7,6 +8,7 @@ mod gray;
 mod shrink;
 mod threshold;
 
+pub use align::{Options, shift};
 pub use bitmap::Bitmap;
 pub use difference::disagreement;
 pub use geometry::Shift;
