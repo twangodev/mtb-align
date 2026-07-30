@@ -14,8 +14,7 @@ impl Shift {
         Self { x, y }
     }
 
-    /// Carries a shift from one pyramid level to the next finer one, where the
-    /// same displacement spans twice as many pixels.
+    /// Carries a shift to the next finer level, where it spans twice the pixels.
     pub fn doubled(self) -> Self {
         Self::new(self.x * 2, self.y * 2)
     }
@@ -41,10 +40,8 @@ impl Rect {
 }
 
 impl Gray {
-    /// Moves the image by `shift`, leaving zeros where it moved away from.
-    ///
-    /// Matches OpenCV's `shiftMat`, except that OpenCV cannot be asked for a
-    /// shift larger than the image; here that simply returns an empty frame.
+    /// Moves the image by `shift`, leaving zeros behind it. OpenCV's `shiftMat`,
+    /// except that a shift larger than the image is allowed and empties it.
     pub fn shifted(&self, shift: Shift) -> Gray {
         let (width, height) = (self.width(), self.height());
         let mut moved = vec![0; width * height];
@@ -65,15 +62,11 @@ impl Gray {
     }
 }
 
-/// The region every exposure covers once each has been moved by its own shift.
-///
-/// This is what OpenCV's `cut` option trims to: outside it at least one frame
-/// contributes nothing but the zeros it was padded with, which would show up in
-/// a composite as a band of dead pixels along an edge.
+/// The region every exposure still covers once moved. What OpenCV's `cut` trims
+/// to: outside it some frame contributes only padding.
 pub fn common_crop(shifts: &[Shift], width: usize, height: usize) -> Rect {
-    // The frame pushed furthest one way decides how much comes off that edge,
-    // and a frame that did not move at all still holds its own edge in place,
-    // which is why both ends start the fold at zero.
+    // The frame pushed furthest decides each edge, and one that did not move
+    // still holds its own, so both folds start at zero.
     let span = |extent: usize, of: fn(Shift) -> i32| {
         let furthest = |pick: fn(i32, i32) -> i32| {
             shifts
@@ -138,7 +131,6 @@ mod tests {
         assert_eq!(image.shifted(Shift::ZERO).as_slice(), image.as_slice());
     }
 
-    /// Moving right and down pushes the top-left corner in and pads behind it.
     #[test]
     fn shifting_pads_the_edge_it_moved_away_from() {
         let shifted = counting(3, 2).shifted(Shift::new(1, 1));
@@ -153,7 +145,7 @@ mod tests {
         assert_eq!(shifted.as_slice(), &[2, 3, 0, 5, 6, 0]);
     }
 
-    /// OpenCV would reject this outright, so there is no convention to match.
+    /// OpenCV rejects this, so there is no convention to match.
     #[test]
     fn shifting_further_than_the_image_leaves_nothing_behind() {
         let shifted = counting(3, 2).shifted(Shift::new(9, -9));
@@ -177,8 +169,6 @@ mod tests {
         assert!(!crop.is_empty());
     }
 
-    /// One frame moved three right, so the leftmost three columns are padding
-    /// in that frame and cannot be part of a composite.
     #[test]
     fn a_positive_shift_trims_the_leading_edge() {
         assert_eq!(
@@ -205,7 +195,6 @@ mod tests {
         );
     }
 
-    /// Shifts either side of zero eat into both edges at once.
     #[test]
     fn shifts_in_both_directions_trim_both_edges() {
         assert_eq!(

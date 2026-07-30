@@ -3,22 +3,15 @@ use crate::{Bitmap, Gray};
 /// Distinct sample values an 8-bit image can take.
 const LEVELS: usize = 256;
 
-/// Which population split the threshold bitmap is cut at.
-///
-/// Ward uses the median, and falls back to the 17th or 83rd percentile for
-/// exposures too dark or too light for the median to sit clear of the noise
-/// floor. Everything else about a percentile threshold bitmap behaves as the
-/// median one does, exposure stability included.
+/// Which population split the threshold bitmap is cut at. Ward uses the median,
+/// falling back to the 17th or 83rd for exposures too dark or light for it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Percentile(u8);
 
 impl Percentile {
     pub const MEDIAN: Self = Self(50);
 
-    /// Ward's fallback for an exposure dark enough that the median is noise.
     pub const SEVENTEENTH: Self = Self(17);
-
-    /// Ward's fallback for an exposure light enough that the median is noise.
     pub const EIGHTY_THIRD: Self = Self(83);
 
     /// Panics unless `percent <= 100`.
@@ -38,17 +31,13 @@ impl Default for Percentile {
     }
 }
 
-/// The sample value the bitmaps are cut at.
-///
-/// Returned as a `u16` rather than a `u8` because it can land one past the top
-/// of the range: an image of nothing but 255s never satisfies the running sum
-/// until the last bin is consumed, leaving the threshold at 256 and the
-/// threshold bitmap empty. OpenCV returns 256 here too.
+/// The sample value the bitmaps are cut at. A `u16` because it can land one past
+/// the range: an image of nothing but 255s gives 256, as it does in OpenCV.
 pub fn threshold(gray: &Gray, percentile: Percentile) -> u16 {
     let histogram = histogram(gray.as_slice());
 
-    // Kept step for step with OpenCV's scan. The running sum is tested before
-    // each bin is folded in, so the answer is one past the bin that tipped it.
+    // OpenCV's scan: the sum is tested before each bin, so the answer is one past
+    // the bin that tipped it.
     let target = gray.as_slice().len() as u64 * percentile.percent() as u64 / 100;
     let mut sum = 0;
     let mut level = 0;
@@ -60,10 +49,8 @@ pub fn threshold(gray: &Gray, percentile: Percentile) -> u16 {
     level as u16
 }
 
-/// Counts how many samples sit at each of the 256 levels.
-///
-/// Counting is commutative, so the threads can be given a slice each and their
-/// tallies added up afterwards; a shared histogram would need a lock per pixel.
+/// Counts samples at each of the 256 levels. Counting is commutative, so
+/// threads tally a slice each rather than locking one shared histogram.
 fn histogram(samples: &[u8]) -> [u64; LEVELS] {
     let tally = |samples: &[u8]| {
         let mut bins = [0u64; LEVELS];
@@ -77,8 +64,8 @@ fn histogram(samples: &[u8]) -> [u64; LEVELS] {
     {
         use rayon::prelude::*;
 
-        // Enough rows per thread that the per-slice histogram is worth setting
-        // up, and small enough that the tail does not idle everything else.
+        // Big enough to amortise a per-slice histogram, small enough not to
+        // leave a long tail.
         const CHUNK: usize = 1 << 16;
 
         if samples.len() > CHUNK {
@@ -97,16 +84,13 @@ fn histogram(samples: &[u8]) -> [u64; LEVELS] {
     tally(samples)
 }
 
-/// One exposure reduced to the two bitmaps the search compares.
-///
-/// They travel together because the exclusion bitmap is only meaningful against
-/// the threshold it was cut from.
+/// One exposure reduced to the two bitmaps the search compares. They travel
+/// together: the exclusion bitmap only means anything against its own threshold.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Bitmaps {
     /// Set where a sample is above the threshold.
     pub threshold: Bitmap,
-    /// *Clear* within the noise tolerance of the threshold, where a sample's
-    /// side of the threshold cannot be trusted.
+    /// *Clear* within the noise tolerance, where a sample's side is untrustworthy.
     pub exclusion: Bitmap,
 }
 
@@ -128,8 +112,7 @@ pub fn compute_bitmaps(gray: &Gray, percentile: Percentile, tolerance: u8) -> Bi
 mod tests {
     use super::*;
 
-    /// One pixel at every level, so the population is exactly uniform and the
-    /// threshold has only one place it can land.
+    /// One pixel at every level, so the threshold has one place it can land.
     fn ramp() -> Gray {
         Gray::from_vec((0..=255).collect(), 16, 16)
     }
@@ -145,8 +128,6 @@ mod tests {
         assert_eq!(threshold(&ramp(), Percentile::EIGHTY_THIRD), 212);
     }
 
-    /// Nothing is strictly above the top of the range, so the running sum only
-    /// completes on the last bin and the threshold falls off the end.
     #[test]
     fn a_uniform_image_pushes_the_threshold_past_every_sample() {
         let white = Gray::from_vec(vec![255; 64], 8, 8);
@@ -163,8 +144,7 @@ mod tests {
         assert!(tb.get(129 % 16, 129 / 16));
     }
 
-    /// Ward zeroes the exclusion bitmap wherever a pixel sits within the noise
-    /// tolerance of the threshold: here 124 through 132, nine values.
+    /// Ward zeroes it within the tolerance: here 124 to 132, nine values.
     #[test]
     fn the_exclusion_bitmap_clears_the_band_around_the_threshold() {
         let eb = compute_bitmaps(&ramp(), Percentile::MEDIAN, 4).exclusion;
@@ -180,8 +160,6 @@ mod tests {
         assert!(eb.get(133 % 16, 133 / 16));
     }
 
-    /// A tolerance of zero still excludes the threshold value itself, since the
-    /// comparison is strict.
     #[test]
     fn a_zero_tolerance_still_excludes_the_threshold_value() {
         let eb = compute_bitmaps(&ramp(), Percentile::MEDIAN, 0).exclusion;
@@ -190,8 +168,7 @@ mod tests {
         assert!(!eb.get(128 % 16, 128 / 16));
     }
 
-    /// The threshold sits at 256 here, one past every sample, so no pixel is
-    /// more than one step away and everything falls inside the tolerance.
+    /// The threshold is 256, so every sample is within one step of it.
     #[test]
     fn a_uniform_image_excludes_itself_entirely() {
         let white = Gray::from_vec(vec![255; 64], 8, 8);

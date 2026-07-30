@@ -1,13 +1,7 @@
 use crate::{Bitmaps, Gray, Percentile, Shift, Shrink, compute_bitmaps, disagreement, shrink2};
 
-/// The nine candidates, in Ward's order, with the centre pulled to the front.
-///
-/// Ward and OpenCV both scan `x` outermost and keep the first candidate to beat
-/// the running best, which leaves `(-1, -1)` winning whenever everything ties.
-/// That only happens when an exposure carries no usable signal at all — every
-/// pixel excluded as noise — but then it drifts the answer by a pixel per
-/// level rather than reporting the honest zero. Trying the centre first costs
-/// nothing and makes a tie resolve to "no movement".
+/// Ward's nine, centre first: he and OpenCV keep the first to beat the running
+/// best, so `(-1, -1)` wins every tie. Centre first ties to zero instead.
 const CANDIDATES: [(i32, i32); 9] = [
     (0, 0),
     (-1, -1),
@@ -23,17 +17,11 @@ const CANDIDATES: [(i32, i32); 9] = [
 /// How the search is run.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Options {
-    /// Ward's `shift_bits`. The search reaches `±(2^bits - 1)` pixels, and he
-    /// reports six working well in practice.
-    ///
-    /// Each bit is one more halving, and the coarsest level is where the offset
-    /// is first guessed — every level below it can only correct by a pixel. Six
-    /// bits of an eight megapixel frame leaves a coarsest level of a few hundred
-    /// pixels, which is plenty; six bits of a thumbnail leaves a handful, and a
-    /// guess made there is worth about as much as a coin toss multiplied by 32.
-    /// Small images want fewer bits, not more.
+    /// Ward's `shift_bits`, reaching `±(2^bits - 1)` pixels; six on a full frame.
+    /// Each is another halving, and the coarsest level guesses with only ±1 to
+    /// correct it after, so small images want fewer, not more.
     pub bits: u32,
-    /// How far from the threshold a sample has to sit before it is trusted.
+    /// How far from the threshold a sample must sit before it is trusted.
     pub tolerance: u8,
     pub percentile: Percentile,
     pub shrink: Shrink,
@@ -77,16 +65,13 @@ pub fn shift(reference: &Gray, target: &Gray, options: &Options) -> Shift {
     let reference_pyramid = pyramid(reference, levels, options.shrink);
     let target_pyramid = pyramid(target, levels, options.shrink);
 
-    // Ward recurses down and refines on the way back up. Walking the levels
-    // coarsest first says the same thing without building the stack, and keeps
-    // one level's bitmaps alive at a time instead of all of them.
+    // Ward recurses; coarsest-first says the same and holds one level at a time.
     (0..=levels).rev().fold(Shift::ZERO, |coarser, level| {
         let bitmaps = |pyramid: &[Gray]| {
             compute_bitmaps(&pyramid[level], options.percentile, options.tolerance)
         };
 
-        // Each level down doubles the resolution, so the offset agreed at the
-        // level above is worth twice as many pixels here.
+        // Twice the resolution, so twice the pixels for the same displacement.
         refine(
             &bitmaps(&reference_pyramid),
             &bitmaps(&target_pyramid),
@@ -95,15 +80,9 @@ pub fn shift(reference: &Gray, target: &Gray, options: &Options) -> Shift {
     })
 }
 
-/// How far each exposure in a bracketed sequence has to move to sit on
-/// `images[reference]`.
-///
-/// Offsets are measured between *adjacent* exposures and accumulated, which is
-/// how Ward does it and not the same as aligning every frame against the
-/// reference directly. Neighbouring frames are the closest in exposure, so one
-/// percentile describes both populations well; the ends of a five-stop bracket
-/// have far less in common, and asking them to agree on a threshold is asking
-/// the most of the algorithm exactly where it has least to work with.
+/// How far each exposure has to move to sit on `images[reference]`, measured
+/// between *adjacent* exposures and accumulated: one percentile fits two
+/// neighbours well and the ends of a bracket badly.
 ///
 /// Panics unless `reference` indexes `images`, or if the images differ in size.
 pub fn align_stack(images: &[Gray], reference: usize, options: &Options) -> Vec<Shift> {
@@ -115,8 +94,7 @@ pub fn align_stack(images: &[Gray], reference: usize, options: &Options) -> Vec<
 
     let mut shifts = vec![Shift::ZERO; images.len()];
 
-    // Outwards from the reference in both directions, each frame placed against
-    // the neighbour that has already been placed.
+    // Outwards from the reference, each frame placed against the last one placed.
     for index in (0..reference).rev() {
         let step = shift(&images[index + 1], &images[index], options);
         shifts[index] = shifts[index + 1].offset(step.x, step.y);
@@ -130,13 +108,8 @@ pub fn align_stack(images: &[Gray], reference: usize, options: &Options) -> Vec<
     shifts
 }
 
-/// How many times the image is halved before the search starts.
-///
-/// Ward's recursion descends `shift_bits` times whatever the image size, which
-/// would shrink a small one past a single pixel; the pseudocode quietly assumes
-/// there is plenty of resolution to give away. OpenCV caps the descent by the
-/// longest side instead, and this follows it, with a second cap on the shortest
-/// side so an extreme aspect ratio cannot collapse a level to nothing.
+/// How many times the image is halved. Ward descends `shift_bits` times whatever
+/// the size; this is OpenCV's cap on the longest side, plus one on the shortest.
 fn shrinks(width: usize, height: usize, bits: u32) -> usize {
     if width == 0 || height == 0 {
         return 0;
@@ -182,8 +155,7 @@ fn refine(reference: &Bitmaps, target: &Bitmaps, around: Shift) -> Shift {
 mod tests {
     use super::*;
 
-    /// Recovering real offsets from a real scene lives in `tests/recovery.rs`;
-    /// what is left here is the search's own bookkeeping.
+    // Recovering real offsets lives in `tests/recovery.rs`.
     #[test]
     fn the_defaults_are_wards_recommendations() {
         let options = Options::default();
@@ -195,7 +167,6 @@ mod tests {
         assert_eq!(Options::opencv().shrink, Shrink::Subsample);
     }
 
-    /// OpenCV's cap, which the level count is written to reproduce.
     #[test]
     fn the_level_count_follows_the_longest_side_until_the_bits_run_out() {
         assert_eq!(shrinks(8256, 6192, 6), 5);
@@ -206,8 +177,6 @@ mod tests {
         assert_eq!(shrinks(1024, 1024, 3), 2);
     }
 
-    /// A very wide, very short image would otherwise be halved until it had no
-    /// rows left.
     #[test]
     fn an_extreme_aspect_ratio_stops_before_a_level_vanishes() {
         assert_eq!(shrinks(1000, 3, 6), 1);
@@ -227,9 +196,7 @@ mod tests {
         assert_eq!((levels[3].width(), levels[3].height()), (8, 8));
     }
 
-    /// Every pixel sits on the threshold, so every pixel is excluded and all
-    /// nine candidates tie at zero disagreement. The honest answer is that
-    /// nothing can be said, which is what no movement means.
+    /// Every pixel is excluded, so all nine candidates tie at zero.
     #[test]
     fn an_exposure_with_no_usable_signal_reports_no_shift() {
         let flat = Gray::from_vec(vec![128; 160 * 120], 160, 120);

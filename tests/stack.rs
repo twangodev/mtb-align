@@ -1,8 +1,5 @@
-//! Aligning a whole bracketed sequence rather than a pair.
-//!
-//! The sequence here is the realistic one: five frames a stop apart, each shot
-//! from a slightly different position, which is what a handheld bracket looks
-//! like.
+//! Aligning a whole bracket: five frames a stop apart, each from a slightly
+//! different position.
 
 mod common;
 
@@ -12,7 +9,7 @@ use mtb_align::{Gray, Options, Shift, align_stack, common_crop};
 const WIDTH: usize = 400;
 const HEIGHT: usize = 300;
 
-/// Where each frame of the bracket was pointing, relative to the scene.
+/// Where each frame was pointing.
 const HANDHELD: [Shift; 5] = [
     Shift { x: 0, y: 0 },
     Shift { x: 3, y: -2 },
@@ -21,8 +18,7 @@ const HANDHELD: [Shift; 5] = [
     Shift { x: -6, y: -11 },
 ];
 
-/// A bracket: each frame moved by the camera shake above and metered a stop
-/// apart from the last.
+/// Each frame moved by the shake above and metered a stop from the last.
 fn bracket() -> Vec<Gray> {
     HANDHELD
         .iter()
@@ -48,9 +44,7 @@ fn every_frame_is_placed_against_the_reference() {
     assert_eq!(shifts, HANDHELD, "the first frame is the reference");
 }
 
-/// With a middle reference every offset is measured from that frame instead, so
-/// they all move by the same constant and the frames stay in the same places
-/// relative to each other.
+/// A different reference moves every offset by the same constant.
 #[test]
 fn the_reference_can_sit_anywhere_in_the_stack() {
     let stack = bracket();
@@ -72,8 +66,7 @@ fn the_reference_can_sit_anywhere_in_the_stack() {
     }
 }
 
-/// The point of the offsets: line the frames up, then keep only the part of the
-/// frame all five of them actually saw.
+/// Line the frames up, then keep only what all five saw.
 #[test]
 fn the_aligned_stack_shares_a_crop_every_frame_covers() {
     let stack = bracket();

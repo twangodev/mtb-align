@@ -1,14 +1,9 @@
-//! Checks the bitmaps, the shift, and the search against answers recorded from
-//! OpenCV's `AlignMTB`.
+//! Checks each layer against answers recorded from OpenCV's `AlignMTB`, whose
+//! conventions this follows — so a disagreement is a bug here, not a difference
+//! of opinion. Regenerate with `tests/fixtures/generate.py`.
 //!
-//! The conventions here were chosen to match it, so a disagreement means
-//! mtb-align is wrong rather than merely different. Regenerate the answers with
-//! `tests/fixtures/generate.py`.
-//!
-//! The three layers are checked separately on purpose. `computeBitmaps` and
-//! `shiftMat` pin the conventions; `calculateShift` pins the search built on
-//! them. A failure in the last one alone says the search tipped a near-tie the
-//! other way, which is a different problem from getting the threshold wrong.
+//! The layers are separate on purpose: `calculateShift` failing alone means the
+//! search tipped a near-tie, not that a convention is wrong.
 
 use mtb_align::{Gray, Options, Percentile, Shift, Shrink, compute_bitmaps, shift, shrink2};
 
@@ -140,8 +135,7 @@ fn unbits(payload: &str) -> Vec<bool> {
     payload.chars().map(|bit| bit == '1').collect()
 }
 
-/// Reports the first disagreement rather than the count, since one wrong
-/// convention makes thousands of pixels wrong and only the first is news.
+/// Reports the first disagreement: a wrong convention breaks thousands.
 fn compare(actual: impl Fn(usize, usize) -> bool, expected: &[bool], width: usize, what: &str) {
     for (index, &want) in expected.iter().enumerate() {
         let (x, y) = (index % width, index / width);
@@ -212,8 +206,8 @@ fn shifting_agrees_with_opencv() {
     }
 }
 
-/// Pins the subsample convention, which the end-to-end search cannot: it
-/// converges on the same offset whichever corner of each block is taken.
+/// Pins the subsample convention, which the search cannot: it converges on the
+/// same offset whichever corner of each block is taken.
 #[test]
 fn shrinking_agrees_with_opencv() {
     for case in &parse() {

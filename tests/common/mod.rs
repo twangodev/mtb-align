@@ -1,22 +1,18 @@
 //! A synthetic scene for the validation tests to photograph.
 //!
-//! Every exposure is read out of the same infinite scene through a window, so a
-//! translated pair are both complete images. Padding a shifted copy instead
-//! would leave a border of invented pixels along one edge, and an alignment
-//! that locked onto that border would look like a success.
+//! Exposures are read through windows onto one infinite scene, so a translated
+//! pair are both complete images. Padding a shifted copy would leave a border
+//! of invented pixels for the alignment to lock onto.
 
 // Each integration test uses its own subset of these.
 #![allow(dead_code)]
 
 use mtb_align::{Gray, Shift};
 
-/// Value noise summed over three cell sizes, so the coarse levels of the
-/// pyramid carry structure and the finest carries detail sharp enough that a
-/// one-pixel error costs something.
-///
-/// A smooth analytic scene makes a poor fixture: gentle gradients cross the
-/// median in the same place under a small shift, so the bitmaps come out
-/// bit-identical and every candidate offset ties at zero.
+/// Value noise over three cell sizes, so every pyramid level has detail sharp
+/// enough that a one-pixel error costs something. A smooth analytic scene
+/// crosses the median in the same place under a small shift, and every
+/// candidate ties at zero.
 pub fn scene(x: i64, y: i64) -> u8 {
     let value = 0.5 * octave(x, y, 64, 0) + 0.3 * octave(x, y, 16, 1) + 0.2 * octave(x, y, 4, 2);
 
@@ -28,31 +24,21 @@ pub fn window(width: usize, height: usize, offset: Shift) -> Gray {
     map_coordinates(width, height, offset, scene)
 }
 
-/// A window over the scene whose lower two thirds is replaced by a plateau
-/// sitting on the median, textured by a pattern fixed to the *sensor* rather
-/// than to the scene.
+/// A plateau on the median across the lower two thirds, textured by a pattern
+/// fixed to the *sensor*: fixed-pattern noise, dust, amp glow.
 ///
-/// This is Ward's Figure 3 with teeth. Every pixel of the plateau is within a
-/// couple of levels of the threshold, so which side it lands on carries no
-/// information about the scene — and because the pattern does not move with
-/// the camera, it argues for an offset of zero just as loudly as the real
-/// scene argues for the truth. Fixed-pattern sensor noise, dust and amp glow
-/// all behave this way.
-///
-/// Noise fixed to the *scene* instead would not make this point: it costs
-/// every candidate offset about the same, so it raises the whole error surface
-/// without moving its minimum.
+/// It carries no information about the scene and does not move with the camera,
+/// so it argues for zero as loudly as the scene argues for the truth. Noise
+/// fixed to the scene would not: it raises the whole error surface evenly.
 pub fn window_with_fixed_pattern_plateau(width: usize, height: usize, offset: Shift) -> Gray {
     let horizon = height / 3;
     let mut samples = window(width, height, offset).as_slice().to_vec();
 
     for y in horizon..height {
         for x in 0..width {
-            // Straddling the threshold is the whole point: a plateau that sits
-            // entirely to one side of it produces the same bit everywhere and
-            // costs the comparison nothing. Blocks rather than single pixels so
-            // that halving the image averages the pattern down instead of away,
-            // and it still misleads the coarse levels where the search commits.
+            // It has to straddle the threshold, or it is one bit everywhere
+            // and costs nothing. Blocks, not pixels, so halving averages it
+            // down rather than away and it still reaches the coarse levels.
             let wobble = (lattice(x as i64 / 4, y as i64 / 4) * 9.0) as i64 - 4;
             samples[y * width + x] = (128 + wobble).clamp(0, 255) as u8;
         }
@@ -61,13 +47,9 @@ pub fn window_with_fixed_pattern_plateau(width: usize, height: usize, offset: Sh
     Gray::from_vec(samples, width, height)
 }
 
-/// A monotonic tone change of the kind a different shutter speed produces:
-/// scale the linear signal, then put it back through the display gamma.
-///
-/// The median survives any monotonic change, which is the property the whole
-/// algorithm rests on. Highlights clip once `stops` is positive, and that part
-/// is not monotonic — it is also exactly what Ward means by staying "within the
-/// usable range of the camera".
+/// A monotonic tone change, as a different shutter speed makes: scale the
+/// linear signal, then put it back through the display gamma. Highlights clip
+/// once `stops` is positive, which is the one part that is not monotonic.
 pub fn reexpose(gray: &Gray, stops: f64) -> Gray {
     const GAMMA: f64 = 2.2;
     let gain = 2f64.powf(stops);

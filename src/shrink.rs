@@ -1,30 +1,21 @@
 use crate::Gray;
 use crate::strips::fill_rows;
 
-/// How a level of the pyramid is halved.
-///
-/// Ward's table calls `ImageShrink2` a subsample, but his text says the
-/// greyscale is "filtered down by a factor of two", and only the bitmaps are
-/// singled out as unsafe to subsample. The two readings disagree, so both are
-/// available.
+/// How a level of the pyramid is halved. Ward's table calls `ImageShrink2` a
+/// subsample; his text says "filtered down". Both readings are available.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Shrink {
-    /// The mean of each 2x2 block. Ward's "filter it down", and the default:
-    /// averaging costs one pass and keeps high-frequency detail from aliasing
-    /// into the coarse levels, which is one of the failure modes he reports.
+    /// The mean of each 2x2 block, and the default: averaging keeps fine detail
+    /// from aliasing into the coarse levels.
     #[default]
     Average,
-    /// Every other row and column, which is what OpenCV's `AlignMTB` does.
+    /// Every other row and column, as OpenCV's `AlignMTB` does.
     Subsample,
 }
 
 /// Halves a plane, dropping an odd final row or column.
 ///
-/// Flooring rather than rounding up keeps both modes on the same grid and
-/// matches OpenCV. This is deliberately unlike a reconstructing pyramid such as
-/// imgpyr's, where every sample has to survive for the collapse to work; here a
-/// dropped fringe costs a strip of one image edge and keeps the shift grid a
-/// clean power of two.
+/// Flooring keeps both modes on the same grid and matches OpenCV.
 pub fn shrink2(gray: &Gray, shrink: Shrink) -> Gray {
     let width = gray.width() / 2;
     let height = gray.height() / 2;
@@ -41,8 +32,7 @@ pub fn shrink2(gray: &Gray, shrink: Shrink) -> Gray {
             let left = 2 * x;
             *sample = match shrink {
                 Shrink::Average => {
-                    // Summed as u16: four saturated samples overflow a u8 three
-                    // times over. The +2 rounds the mean to nearest.
+                    // u16: four samples overflow a u8. The +2 rounds to nearest.
                     let total = source[top + left] as u16
                         + source[top + left + 1] as u16
                         + source[bottom + left] as u16
@@ -74,8 +64,7 @@ mod tests {
         assert_eq!(shrunk.as_slice(), &[3, 5, 11, 13]);
     }
 
-    /// Truncating instead would bias every level downward. The bias would
-    /// largely cancel out of a median threshold, but rounding is free.
+    /// Truncating would bias every level downward; rounding is free.
     #[test]
     fn averaging_rounds_to_nearest() {
         let block = Gray::from_vec(vec![1, 2, 3, 4], 2, 2);
@@ -104,8 +93,6 @@ mod tests {
         assert_eq!(subsampled.as_slice(), &[0, 2]);
     }
 
-    /// Averaging must not overflow on the way to the mean, which it would if
-    /// the four samples were summed in a `u8`.
     #[test]
     fn a_saturated_block_averages_to_saturation() {
         let block = Gray::from_vec(vec![255; 4], 2, 2);
@@ -122,8 +109,7 @@ mod tests {
     }
 
     proptest! {
-        /// The pyramid bookkeeping assumes the two modes stay the same shape as
-        /// each other, whatever the input size.
+        /// The pyramid bookkeeping assumes both modes stay the same shape.
         #[test]
         fn both_modes_halve_to_the_same_size(width in 0usize..40, height in 0usize..40) {
             let source = Gray::from_vec(vec![9; width * height], width, height);

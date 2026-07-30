@@ -53,9 +53,8 @@ fn main() {
     );
 }
 
-/// A cheap blocky scene with detail at three scales. Value noise would look
-/// more like a photograph, but at fifty megapixels the fixture would cost more
-/// than the thing being measured.
+/// Blocky detail at three scales. Value noise would look more like a photograph
+/// and cost more than the thing being measured.
 fn scene(width: usize, height: usize, offset: Shift) -> Gray {
     let samples = (0..width * height)
         .map(|index| {

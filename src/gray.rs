@@ -23,15 +23,8 @@ impl Gray {
         }
     }
 
-    /// Interleaved 8-bit RGB, flattened with the paper's weights:
-    ///
-    /// ```text
-    /// grey = (54*red + 183*green + 19*blue) / 256
-    /// ```
-    ///
-    /// They sum to exactly 256, so the divide cannot lose the top of the range.
-    /// Ward notes the green channel alone gives the same alignment results;
-    /// these weights cost nothing over reading one channel.
+    /// Interleaved 8-bit RGB flattened with the paper's weights, which sum to
+    /// exactly 256. Ward notes the green channel alone works as well.
     ///
     /// Panics unless `rgb.len() == width * height * 3`.
     pub fn from_rgb(rgb: &[u8], width: usize, height: usize) -> Self {
@@ -104,8 +97,6 @@ mod tests {
         assert_eq!(gray.sample(2, 1), 6);
     }
 
-    /// The paper's weights sum to exactly 256, so white survives the divide
-    /// intact. Anything that drifts off 255 here has lost a channel or rounded.
     #[test]
     fn from_rgb_maps_white_to_full_scale_and_black_to_zero() {
         let gray = Gray::from_rgb(&[255, 255, 255, 0, 0, 0], 2, 1);
@@ -113,8 +104,6 @@ mod tests {
         assert_eq!(gray.as_slice(), &[255, 0]);
     }
 
-    /// grey = (54*red + 183*green + 19*blue) / 256. Green carries most of the
-    /// weight, which is why Ward says the green channel alone would do.
     #[test]
     fn from_rgb_weights_the_channels_as_the_paper_does() {
         let gray = Gray::from_rgb(&[255, 0, 0, 0, 255, 0, 0, 0, 255], 3, 1);

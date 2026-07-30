@@ -3,19 +3,13 @@
 
     uv run --with opencv-python-headless --with numpy tests/fixtures/generate.py
 
-mtb-align's conventions are chosen to match OpenCV's AlignMTB, so any divergence
-here is a bug on our side rather than a difference of opinion. This records
-OpenCV's answers instead of depending on it at test time.
+Records OpenCV's answers rather than depending on it at test time. computeBitmaps
+and shiftMat pin the pieces, calculateShift pins the search; separating them says
+whether a failure is a wrong convention or a near-tie tipping the other way.
 
-All three of the interesting methods are public, so all three are recorded:
-computeBitmaps and shiftMat pin the pieces, calculateShift pins the whole
-search. When only the last of them disagrees, the conventions are right and the
-argmin tipped a different way on a near-tie; when the first two disagree, the
-conventions are wrong. That is the reason for recording the pieces separately.
-
-Ward's paper is the specification, not OpenCV, and the two differ in one place
-that matters: `AlignMTB` subsamples the pyramid where Ward filters it down. The
-fixtures are therefore generated against `Options::opencv()`, not the defaults.
+Ward's paper is the specification, not OpenCV, and they differ in one place that
+matters: AlignMTB subsamples the pyramid where Ward filters it down. So these are
+generated against `Options::opencv()`, not the defaults.
 """
 
 import pathlib
@@ -32,9 +26,8 @@ BITMAP_CASES = [(16, 16), (13, 9), (40, 5), (8, 8), (65, 3)]
 
 SHIFT_CASES = [(11, 7, 0, 0), (11, 7, 3, 2), (11, 7, -4, -1), (11, 7, 10, 6), (70, 5, -1, 4)]
 
-# calculateShift needs enough image to have something to say. The bit count is
-# cut to suit the size: six bits of a 96x72 frame would leave a coarsest level
-# of three pixels by two, which is a coin toss rather than a convention.
+# Bits cut to suit the size: six of a 96x72 frame leaves a coarsest level of
+# three pixels by two, which is a coin toss rather than a convention.
 ALIGN_CASES = [(96, 72, 4, (5, -3)), (96, 72, 4, (-7, 6)), (64, 64, 3, (2, 2))]
 
 # Odd sizes, where the dropped fringe row or column shows up.
@@ -42,35 +35,21 @@ SHRINK_CASES = [(8, 8), (9, 7), (1, 1), (65, 3)]
 
 
 def downsample(src):
-    """OpenCV's `AlignMTB::downsample`, transcribed rather than recorded.
+    """OpenCV's `AlignMTB::downsample`, transcribed rather than recorded: it is
+    protected, so unlike everything else here it cannot be called. The C++ takes
+    `src[2y][2x]` into a `Mat(rows / 2, cols / 2)`.
 
-    It is a protected member, so unlike everything else in this file it cannot
-    be called; this is the C++ written out in numpy:
-
-        for(int y = 0; y < dst.rows; y++) {
-            uchar *ptr = src_ptr;
-            for(int x = 0; x < dst.cols; x++) { dst_ptr[0] = ptr[0]; dst_ptr++; ptr += 2; }
-            src_ptr += offset;
-        }
-
-    with `dst = Mat(src.rows / 2, src.cols / 2, ...)`. Recording it pins the
-    convention against a fixture instead of only against a comment. The
-    end-to-end `align` cases cannot do that job: the search converges on the
-    same answer whichever corner of each block is taken, which is a good
-    property of the algorithm and a useless one for an oracle.
+    The end-to-end `align` cases cannot pin this — the search converges on the
+    same answer whichever corner of each block is taken.
     """
     height, width = src.shape
     return np.ascontiguousarray(src[: height // 2 * 2 : 2, : width // 2 * 2 : 2])
 
 
 def scene(width, height, seed):
-    """A multi-scale random field, so alignment has something to lock onto at
-    every level rather than only the finest.
-
-    The per-pixel octave is what makes these fixtures able to tell the pyramid
-    conventions apart. Without it the field is smooth enough that taking the
-    other pixel of each 2x2 block changes almost nothing, and an implementation
-    that subsampled the wrong corner would agree with OpenCV anyway.
+    """A multi-scale random field. The per-pixel octave is what lets these
+    fixtures tell the pyramid conventions apart: without it the field is smooth
+    enough that subsampling the wrong corner still agrees with OpenCV.
     """
     rng = np.random.default_rng(seed)
     total = np.zeros((height, width), np.float32)
@@ -83,8 +62,7 @@ def scene(width, height, seed):
 
 
 def windows(width, height, offset, seed):
-    """Two views of one scene a known distance apart, so both are real images
-    rather than one padded copy of the other."""
+    """Two views of one scene a known distance apart, both real images."""
     margin = 32
     whole = scene(width + 2 * margin, height + 2 * margin, seed)
     dx, dy = offset
@@ -110,9 +88,8 @@ def main():
     out = []
 
     for seed, (width, height) in enumerate(BITMAP_CASES):
-        # The last case is a uniform white frame: nothing is above the top of
-        # the range, so the median runs off the end at 256 and both bitmaps come
-        # back empty. It is the reason the threshold is not a u8.
+        # A uniform white frame runs the median off the end at 256, which is
+        # why the threshold is not a u8.
         source = (
             np.full((height, width), 255, np.uint8)
             if (width, height) == (8, 8)
@@ -126,9 +103,8 @@ def main():
 
     for seed, (width, height, dx, dy) in enumerate(SHIFT_CASES, start=100):
         source = scene(width, height, seed)
-        # OpenCV computes the copied region as cols - abs(shift.x) and builds a
-        # Rect from it, so a shift past the edge of the image is not something
-        # it can be asked for. Those are covered by the unit tests instead.
+        # OpenCV builds a Rect from cols - abs(shift.x), so it cannot be asked
+        # for a shift past the edge. Unit tests cover those.
         moved = aligner.shiftMat(source, (dx, dy))
         out.append(
             f"CASE shift {width} {height} {dx} {dy}\n"

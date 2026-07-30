@@ -3,18 +3,8 @@ use crate::strips::fill_rows;
 /// Bits per word. Ward counts 32 or 64 at a time; this crate always takes 64.
 pub(crate) const WORD_BITS: usize = u64::BITS as usize;
 
-/// A one-bit-per-pixel image packed into `u64` words, each row starting on a
-/// word boundary.
-///
-/// Ward instead flattens the whole image into one bit array, so a
-/// two-dimensional shift becomes a single one-dimensional shift plus a clear
-/// along one or two exposed edges. Word-aligned rows cost at most 63 padding
-/// bits per row — under one percent at sensor widths — and in exchange a
-/// vertical shift is just a row index and a horizontal shift never crosses a
-/// row boundary.
-///
-/// Bits run least-significant first, so pixel `x` lives in bit `x % 64` of word
-/// `x / 64` and moving right in the image is a left shift in the word.
+/// A one-bit-per-pixel image, least-significant bit first, each row padded to a
+/// word boundary so a shift never crosses a row. Ward flattens it instead.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Bitmap {
     words: Vec<u64>,
@@ -58,19 +48,13 @@ impl Bitmap {
         }
     }
 
-    /// Ward's `BitmapTotal`. The padding bits past `width` are held clear, so
-    /// this can count whole words without masking.
+    /// Ward's `BitmapTotal`. Padding is held clear, so whole words can count.
     pub fn count_ones(&self) -> u64 {
         self.words.iter().map(|word| word.count_ones() as u64).sum()
     }
 
-    /// Builds a bitmap by testing every pixel, accumulating whole words before
-    /// storing them.
-    ///
-    /// Setting one bit at a time costs a bounds check, a division and a
-    /// read-modify-write per pixel, which at sensor resolution is most of the
-    /// time the whole alignment takes. Here the inner loop has no branch and no
-    /// memory traffic until a word is finished.
+    /// Builds a bitmap a word at a time. Setting single bits costs a bounds check
+    /// and a read-modify-write each, which was most of the alignment.
     pub(crate) fn packed(
         width: usize,
         height: usize,
@@ -82,9 +66,7 @@ impl Bitmap {
         fill_rows(&mut bitmap.words, words_per_row, |y, row| {
             for (index, word) in row.iter_mut().enumerate() {
                 let base = index * WORD_BITS;
-                // The last word of a row stops at the width, which is what
-                // keeps the padding clear.
-                let span = WORD_BITS.min(width - base);
+                let span = WORD_BITS.min(width - base); // stops at the width
 
                 let mut packed = 0;
                 for offset in 0..span {
@@ -99,9 +81,6 @@ impl Bitmap {
     }
 
     /// How many words each row occupies, padding included.
-    ///
-    /// Exposed alongside [`Bitmap::row`] because the whole point of packing is
-    /// to let callers work a word at a time; see the type's note on bit order.
     pub fn words_per_row(&self) -> usize {
         self.words_per_row
     }
@@ -158,8 +137,6 @@ mod tests {
         assert_eq!(bitmap.count_ones(), 0);
     }
 
-    /// A row narrower than a word leaves 61 bits of slack. Counting whole words
-    /// only works because nothing ever sets them.
     #[test]
     fn the_padding_past_the_width_never_counts() {
         let mut bitmap = Bitmap::zeros(3, 4);
@@ -173,8 +150,6 @@ mod tests {
         assert_eq!(bitmap.count_ones(), 12);
     }
 
-    /// Every row starts a fresh word, so a narrow bitmap spends one word per
-    /// row rather than packing rows end to end.
     #[test]
     fn each_row_starts_on_a_word_boundary() {
         let bitmap = Bitmap::zeros(3, 4);
@@ -211,9 +186,7 @@ mod tests {
     }
 
     proptest! {
-        /// Packing whole words has to agree with setting the bits one at a
-        /// time, at every width — a word that ran past the end of a row would
-        /// leave padding set and be counted.
+        /// A word running past a row's end would leave padding set and counted.
         #[test]
         fn packing_a_word_at_a_time_matches_setting_bit_by_bit(
             width in 1usize..200,
@@ -234,9 +207,7 @@ mod tests {
             prop_assert!(Bitmap::packed(width, height, bit) == one_at_a_time);
         }
 
-        /// How much slack a row carries depends on `width % 64`, so the padding
-        /// invariant has to hold at every width rather than the one a unit test
-        /// happens to pick.
+        /// Slack depends on `width % 64`, so this has to hold at every width.
         #[test]
         fn the_count_matches_the_bits_actually_set(
             width in 1usize..200,
@@ -259,8 +230,7 @@ mod tests {
             }
         }
 
-        /// Reading back every coordinate proves rows do not overlap, which is
-        /// the failure mode if `words_per_row` and the row slice disagree.
+        /// Proves rows do not overlap.
         #[test]
         fn setting_one_bit_leaves_every_other_clear(
             width in 1usize..140,

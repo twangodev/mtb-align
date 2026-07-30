@@ -5,17 +5,14 @@
 //! cargo run --example align -- a.jpg b.jpg c.jpg
 //! ```
 //!
-//! The offsets are found on greyscale copies and then applied to the colour
-//! frames, which is the usual shape of this: alignment only ever needs one
-//! channel, and it has to happen before the camera response is known.
+//! Offsets are found on greyscale copies and applied to the colour frames.
 
 use std::path::{Path, PathBuf};
 
 use image::RgbImage;
 use mtb_align::{Gray, Options, Rect, Shift, align_stack, common_crop};
 
-/// Where the synthetic bracket was pointed, so the recovered offsets have
-/// something to be checked against.
+/// Where the synthetic bracket was pointed, to check the answers against.
 const HANDHELD: [Shift; 5] = [
     Shift { x: 0, y: 0 },
     Shift { x: 4, y: -3 },
@@ -45,8 +42,7 @@ fn main() {
         .map(|frame| Gray::from_rgb(frame.as_raw(), width, height))
         .collect();
 
-    // The middle of a bracket is the frame most likely to share detail with
-    // both ends of it.
+    // The middle frame shares most detail with both ends.
     let reference = grays.len() / 2;
     let shifts = align_stack(&grays, reference, &Options::default());
     let crop = common_crop(&shifts, width, height);
@@ -93,10 +89,8 @@ fn main() {
     println!("  written to {}", output.display());
 }
 
-/// Moves a frame by its offset and keeps the region every frame covers.
-///
-/// Inside the common crop every frame has real pixels, so this never has to
-/// invent one.
+/// Moves a frame by its offset and keeps the region every frame covers, inside
+/// which every frame has real pixels.
 fn cropped(frame: &RgbImage, shift: Shift, crop: Rect) -> RgbImage {
     RgbImage::from_fn(crop.width as u32, crop.height as u32, |x, y| {
         let source_x = (crop.x + x as usize) as i64 - shift.x as i64;
@@ -133,7 +127,7 @@ fn synthetic() -> Vec<RgbImage> {
         .collect()
 }
 
-/// A monotonic tone change, the way a different shutter speed reads out.
+/// A monotonic tone change, as a different shutter speed makes.
 fn expose(sample: u8, stops: f64) -> u8 {
     const GAMMA: f64 = 2.2;
     let linear = (sample as f64 / 255.0).powf(GAMMA) * 2f64.powf(stops);
@@ -141,7 +135,7 @@ fn expose(sample: u8, stops: f64) -> u8 {
     (linear.min(1.0).powf(1.0 / GAMMA) * 255.0) as u8
 }
 
-/// Value noise at three scales, so the pyramid has structure at every level.
+/// Value noise at three scales.
 fn scene(x: i64, y: i64) -> u8 {
     let value = 0.5 * octave(x, y, 64) + 0.3 * octave(x, y, 16) + 0.2 * octave(x, y, 4);
 

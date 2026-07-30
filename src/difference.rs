@@ -2,22 +2,9 @@ use crate::bitmap::WORD_BITS;
 use crate::strips::sum_rows;
 use crate::{Bitmaps, Shift};
 
-/// How many pixels the two exposures disagree about at one candidate offset.
-///
-/// This is Ward's error term, `BitmapTotal` of
-///
-/// ```text
-/// (tb1 XOR shift(tb2)) AND eb1 AND shift(eb2)
-/// ```
-///
-/// counted without materialising any of it. Ward's own formulation allocates
-/// three bitmaps and makes six whole-image passes per candidate, and the search
-/// tries nine candidates at every level.
-///
-/// The exclusion terms mask the *result* of the XOR, never its operands. Ward's
-/// footnote is explicit about the difference: masking each threshold bitmap
-/// first and comparing what survives would count a disagreement about which
-/// pixels are noise as though it were a disagreement about the image.
+/// Ward's `BitmapTotal` of `(tb1 XOR shift(tb2)) AND eb1 AND shift(eb2)`, counted
+/// without materialising any of it. The exclusion terms mask the *result* of the
+/// XOR, never its operands — his footnote 4.
 ///
 /// Panics unless every bitmap has the same dimensions.
 pub fn disagreement(reference: &Bitmaps, target: &Bitmaps, shift: Shift) -> u64 {
@@ -34,10 +21,7 @@ pub fn disagreement(reference: &Bitmaps, target: &Bitmaps, shift: Shift) -> u64 
     let words_per_row = reference.threshold.words_per_row();
 
     sum_rows(height, |y| {
-        // A row drawn from outside the target contributes nothing: both of the
-        // target's bitmaps are zero there, and the exclusion term rules the
-        // whole row out. Ward gets the same effect by clearing the exposed
-        // border of the shifted bitmaps.
+        // Outside the target both its bitmaps are zero, so the row is excluded.
         let Ok(source_y) = usize::try_from(y as i64 - shift.y as i64) else {
             return 0;
         };
@@ -52,9 +36,7 @@ pub fn disagreement(reference: &Bitmaps, target: &Bitmaps, shift: Shift) -> u64 
 
         (0..words_per_row)
             .map(|word| {
-                // Bits past the width can pick up whatever the shift drags in,
-                // but the reference exclusion bitmap holds its padding clear,
-                // so they are masked away before they can be counted.
+                // The reference exclusion bitmap masks its own padding clear.
                 let disagrees = (reference_threshold[word]
                     ^ shifted_word(target_threshold, word, shift.x))
                     & reference_exclusion[word]
@@ -78,8 +60,7 @@ fn shifted_word(row: &[u64], index: usize, shift: i32) -> u64 {
         _ => 0,
     };
 
-    // A shift that is a whole number of words needs no funnelling, and asking
-    // for a 64-bit shift below would be undefined anyway.
+    // Whole words need no funnelling, and `<< 64` would be undefined.
     if bit == 0 {
         fetch(word)
     } else {
@@ -115,9 +96,7 @@ mod tests {
         }
     }
 
-    /// Ward's formulation, written out operation by operation exactly as the
-    /// paper lists it, as something for the fused version to be checked
-    /// against. Slow and obviously correct is the whole point.
+    /// Ward's formulation operation by operation: slow and obviously correct.
     mod reference {
         use super::*;
 
@@ -164,8 +143,6 @@ mod tests {
         assert_eq!(disagreement(&all, &none, Shift::ZERO), 70 * 9);
     }
 
-    /// Either exposure can veto a pixel, so a disagreement only counts where
-    /// both exclusion bitmaps allow it.
     #[test]
     fn a_pixel_counts_only_where_both_exposures_allow_it() {
         let all = bitmaps_from(70, 9, |_, _| true, |_, _| true);
@@ -192,8 +169,7 @@ mod tests {
         );
     }
 
-    /// The whole search rests on this: the offset that undoes the translation
-    /// is the one that scores zero.
+    /// The whole search rests on this.
     #[test]
     fn the_offset_that_undoes_a_translation_scores_zero() {
         let pattern = |x: usize, y: usize| (x / 3 + y / 2).is_multiple_of(2);
@@ -205,10 +181,7 @@ mod tests {
         assert!(disagreement(&reference, &target, Shift::new(4, 2)) > 0);
     }
 
-    /// Shifting the target off the reference entirely leaves no overlap, and
-    /// the exposed border of the shifted exclusion bitmap clears the rest.
-    /// Ward relies on this to bound the offset: without it the emptiest overlap
-    /// would always look like the best match.
+    /// Bounds the offset: else the emptiest overlap is always the best match.
     #[test]
     fn a_shift_clear_of_the_image_leaves_nothing_to_disagree_about() {
         let all = bitmaps_from(70, 9, |_, _| true, |_, _| true);
@@ -230,8 +203,6 @@ mod tests {
     }
 
     proptest! {
-        /// The fused count must agree with Ward's literal sequence for every
-        /// width, every shift, and both the aligned and wildly-off cases.
         /// Widths either side of 64 are what exercise the word arithmetic.
         #[test]
         fn the_fused_count_matches_wards_literal_sequence(

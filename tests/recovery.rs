@@ -1,9 +1,6 @@
-//! Does the alignment actually find the offset it is supposed to?
-//!
-//! Each test photographs one synthetic scene twice through windows a known
-//! distance apart, then asks for that distance back. The later ones degrade the
-//! second exposure the way a real bracketed sequence would — noise, a change of
-//! shutter speed, both at once — and expect the same answer.
+//! Photographs one synthetic scene twice a known distance apart and asks for
+//! that distance back, degrading the second exposure the way a real bracket
+//! would — noise, a change of shutter speed, both at once.
 
 mod common;
 
@@ -46,8 +43,7 @@ fn a_known_translation_comes_back_exactly() {
     }
 }
 
-/// Six bits of shift reach 63 pixels, the last offset the default search can
-/// express.
+/// Six bits reach 63 pixels, the last offset the default search can express.
 #[test]
 fn the_search_reaches_the_edge_of_its_range() {
     for offset in [
@@ -88,8 +84,8 @@ fn both_shrink_conventions_recover_the_same_translation() {
     }
 }
 
-/// Sensor noise moves individual pixels across the threshold, but the exclusion
-/// bitmap drops the ones close enough for that to be possible.
+/// Noise moves pixels across the threshold; the exclusion band drops the ones
+/// close enough for that.
 #[test]
 fn noise_does_not_move_the_answer() {
     let reference = window(WIDTH, HEIGHT, Shift::ZERO);
@@ -106,10 +102,8 @@ fn noise_does_not_move_the_answer() {
     }
 }
 
-/// The claim the whole method rests on. A median is a rank, and a monotonic
-/// tone change cannot reorder the population, so the bitmaps are the same
-/// however the exposure was set — which is what lets alignment happen before
-/// the camera response is known.
+/// The claim the whole method rests on: a monotonic tone change cannot reorder
+/// the population, so the median, and the bitmap, do not move.
 #[test]
 fn a_change_of_exposure_does_not_move_the_answer() {
     let reference = window(WIDTH, HEIGHT, Shift::ZERO);
@@ -135,13 +129,9 @@ fn noise_and_a_change_of_exposure_together_do_not_move_the_answer() {
     assert_eq!(shift(&reference, &target, &Options::default()), offset);
 }
 
-/// Ward's Figure 3: a large area sitting on the threshold, where which side a
-/// pixel falls on is decided by the sensor rather than by the scene. Because
-/// the pattern does not move with the camera, it pulls the answer towards zero;
-/// excluding that band is what stops it.
-///
-/// The tolerance is the only thing that differs between the two halves of this
-/// test, so it is the exclusion band being measured and nothing else.
+/// Ward's Figure 3: an area on the threshold decided by the sensor, not the
+/// scene. It does not move with the camera, so it pulls the answer to zero.
+/// Tolerance is the only difference between the two halves.
 #[test]
 fn the_exclusion_band_rescues_an_exposure_with_a_noisy_plateau() {
     let offset = Shift::new(9, -6);
@@ -170,8 +160,7 @@ fn the_exclusion_band_rescues_an_exposure_with_a_noisy_plateau() {
 }
 
 proptest! {
-    // Each case builds two 400x300 scenes and runs a six-level search, so this
-    // is deliberately a sweep rather than an exhaustive check.
+    // Two 400x300 scenes and a six-level search per case: a sweep, not a proof.
     #![proptest_config(ProptestConfig::with_cases(16))]
 
     #[test]
