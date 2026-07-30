@@ -81,22 +81,13 @@ pub fn compute_bitmaps(gray: &Gray, percentile: Percentile, tolerance: u8) -> Bi
     let cut = threshold(gray, percentile);
     let tolerance = tolerance as u16;
 
-    let mut bitmaps = Bitmaps {
-        threshold: Bitmap::zeros(gray.width(), gray.height()),
-        exclusion: Bitmap::zeros(gray.width(), gray.height()),
-    };
+    let (width, height) = (gray.width(), gray.height());
+    let sample = |x, y| gray.sample(x, y) as u16;
 
-    for y in 0..gray.height() {
-        for x in 0..gray.width() {
-            let sample = gray.sample(x, y) as u16;
-            bitmaps.threshold.set(x, y, sample > cut);
-            bitmaps
-                .exclusion
-                .set(x, y, sample.abs_diff(cut) > tolerance);
-        }
+    Bitmaps {
+        threshold: Bitmap::packed(width, height, |x, y| sample(x, y) > cut),
+        exclusion: Bitmap::packed(width, height, |x, y| sample(x, y).abs_diff(cut) > tolerance),
     }
-
-    bitmaps
 }
 
 #[cfg(test)]

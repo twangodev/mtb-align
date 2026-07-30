@@ -62,6 +62,42 @@ impl Bitmap {
         self.words.iter().map(|word| word.count_ones() as u64).sum()
     }
 
+    /// Builds a bitmap by testing every pixel, accumulating whole words before
+    /// storing them.
+    ///
+    /// Setting one bit at a time costs a bounds check, a division and a
+    /// read-modify-write per pixel, which at sensor resolution is most of the
+    /// time the whole alignment takes. Here the inner loop has no branch and no
+    /// memory traffic until a word is finished.
+    pub(crate) fn packed(
+        width: usize,
+        height: usize,
+        mut bit: impl FnMut(usize, usize) -> bool,
+    ) -> Self {
+        let mut bitmap = Self::zeros(width, height);
+        let words_per_row = bitmap.words_per_row;
+
+        for y in 0..height {
+            let row = &mut bitmap.words[y * words_per_row..(y + 1) * words_per_row];
+
+            for (index, word) in row.iter_mut().enumerate() {
+                let base = index * WORD_BITS;
+                // The last word of a row stops at the width, which is what
+                // keeps the padding clear.
+                let span = WORD_BITS.min(width - base);
+
+                let mut packed = 0;
+                for offset in 0..span {
+                    packed |= (bit(base + offset, y) as u64) << offset;
+                }
+
+                *word = packed;
+            }
+        }
+
+        bitmap
+    }
+
     /// How many words each row occupies, padding included.
     ///
     /// Exposed alongside [`Bitmap::row`] because the whole point of packing is
@@ -175,6 +211,29 @@ mod tests {
     }
 
     proptest! {
+        /// Packing whole words has to agree with setting the bits one at a
+        /// time, at every width — a word that ran past the end of a row would
+        /// leave padding set and be counted.
+        #[test]
+        fn packing_a_word_at_a_time_matches_setting_bit_by_bit(
+            width in 1usize..200,
+            height in 1usize..8,
+            seed in any::<u64>(),
+        ) {
+            let bit = |x: usize, y: usize| {
+                (seed ^ (x as u64) << 7 ^ (y as u64)).wrapping_mul(0x2545F491_4F6CDD1D).count_ones().is_multiple_of(3)
+            };
+
+            let mut one_at_a_time = Bitmap::zeros(width, height);
+            for y in 0..height {
+                for x in 0..width {
+                    one_at_a_time.set(x, y, bit(x, y));
+                }
+            }
+
+            prop_assert!(Bitmap::packed(width, height, bit) == one_at_a_time);
+        }
+
         /// How much slack a row carries depends on `width % 64`, so the padding
         /// invariant has to hold at every width rather than the one a unit test
         /// happens to pick.
