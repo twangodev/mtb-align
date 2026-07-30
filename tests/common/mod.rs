@@ -25,7 +25,7 @@ pub fn scene(x: i64, y: i64) -> u8 {
 
 /// Reads the scene through a window moved by `offset`.
 pub fn window(width: usize, height: usize, offset: Shift) -> Gray {
-    map_coordinates(width, height, offset, |x, y| scene(x, y))
+    map_coordinates(width, height, offset, scene)
 }
 
 /// A window over the scene whose lower two thirds is replaced by a plateau

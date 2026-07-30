@@ -95,6 +95,41 @@ pub fn shift(reference: &Gray, target: &Gray, options: &Options) -> Shift {
     })
 }
 
+/// How far each exposure in a bracketed sequence has to move to sit on
+/// `images[reference]`.
+///
+/// Offsets are measured between *adjacent* exposures and accumulated, which is
+/// how Ward does it and not the same as aligning every frame against the
+/// reference directly. Neighbouring frames are the closest in exposure, so one
+/// percentile describes both populations well; the ends of a five-stop bracket
+/// have far less in common, and asking them to agree on a threshold is asking
+/// the most of the algorithm exactly where it has least to work with.
+///
+/// Panics unless `reference` indexes `images`, or if the images differ in size.
+pub fn align_stack(images: &[Gray], reference: usize, options: &Options) -> Vec<Shift> {
+    assert!(
+        reference < images.len(),
+        "no exposure {reference} in a stack of {}",
+        images.len()
+    );
+
+    let mut shifts = vec![Shift::ZERO; images.len()];
+
+    // Outwards from the reference in both directions, each frame placed against
+    // the neighbour that has already been placed.
+    for index in (0..reference).rev() {
+        let step = shift(&images[index + 1], &images[index], options);
+        shifts[index] = shifts[index + 1].offset(step.x, step.y);
+    }
+
+    for index in reference + 1..images.len() {
+        let step = shift(&images[index - 1], &images[index], options);
+        shifts[index] = shifts[index - 1].offset(step.x, step.y);
+    }
+
+    shifts
+}
+
 /// How many times the image is halved before the search starts.
 ///
 /// Ward's recursion descends `shift_bits` times whatever the image size, which
