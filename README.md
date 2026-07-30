@@ -54,5 +54,4 @@ Enhanced Correlation Coefficient Maximization." *IEEE TPAMI*, 30(10), 1858-1865.
 sequences that do need rotation. OpenCV has it as `findTransformECC`.
 
 OpenCV's `AlignMTB`, whose conventions this follows and whose output the fixture
-tests are recorded from. Hugin's `align_image_stack` and pfstools are GPL, and
-were not consulted.
+tests are recorded from.
