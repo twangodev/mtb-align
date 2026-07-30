@@ -1,4 +1,6 @@
-use crate::{Bitmaps, Gray, Percentile, Shift, Shrink, compute_bitmaps, disagreement, shrink2};
+use crate::{
+    Bitmaps, Error, Gray, Percentile, Shift, Shrink, compute_bitmaps, disagreement, shrink2,
+};
 
 /// Ward's nine, centre first: he and OpenCV keep the first to beat the running
 /// best, so `(-1, -1)` wins every tie. Centre first ties to zero instead.
@@ -54,24 +56,21 @@ impl Options {
 }
 
 /// How far `target` has to move to sit on top of `reference`.
-///
-/// Panics unless the two images have the same dimensions.
-pub fn shift(reference: &Gray, target: &Gray, options: &Options) -> Shift {
-    assert!(
-        reference.width() == target.width() && reference.height() == target.height(),
-        "cannot align a {}x{} exposure against a {}x{} one",
-        reference.width(),
-        reference.height(),
-        target.width(),
-        target.height()
-    );
+pub fn shift(reference: &Gray, target: &Gray, options: &Options) -> Result<Shift, Error> {
+    let size = |gray: &Gray| (gray.width(), gray.height());
+    if size(reference) != size(target) {
+        return Err(Error::SizeMismatch {
+            reference: size(reference),
+            target: size(target),
+        });
+    }
 
     let levels = shrinks(reference.width(), reference.height(), options.bits);
     let reference_pyramid = pyramid(reference, levels, options.shrink);
     let target_pyramid = pyramid(target, levels, options.shrink);
 
     // Ward recurses; coarsest-first says the same and holds one level at a time.
-    (0..=levels).rev().fold(Shift::ZERO, |coarser, level| {
+    Ok((0..=levels).rev().fold(Shift::ZERO, |coarser, level| {
         let bitmaps = |pyramid: &[Gray]| {
             compute_bitmaps(&pyramid[level], options.percentile, options.tolerance)
         };
@@ -82,7 +81,7 @@ pub fn shift(reference: &Gray, target: &Gray, options: &Options) -> Shift {
             &bitmaps(&target_pyramid),
             coarser.doubled(),
         )
-    })
+    }))
 }
 
 /// How far each exposure has to move to sit on `images[reference]`, measured
@@ -91,29 +90,32 @@ pub fn shift(reference: &Gray, target: &Gray, options: &Options) -> Shift {
 ///
 /// So `images` has to be in exposure order, which is not always the order the
 /// camera wrote the files in.
-///
-/// Panics unless `reference` indexes `images`, or if the images differ in size.
-pub fn align_stack(images: &[Gray], reference: usize, options: &Options) -> Vec<Shift> {
-    assert!(
-        reference < images.len(),
-        "no exposure {reference} in a stack of {}",
-        images.len()
-    );
+pub fn align_stack(
+    images: &[Gray],
+    reference: usize,
+    options: &Options,
+) -> Result<Vec<Shift>, Error> {
+    if reference >= images.len() {
+        return Err(Error::NoSuchReference {
+            reference,
+            exposures: images.len(),
+        });
+    }
 
     let mut shifts = vec![Shift::ZERO; images.len()];
 
     // Outwards from the reference, each frame placed against the last one placed.
     for index in (0..reference).rev() {
-        let step = shift(&images[index + 1], &images[index], options);
+        let step = shift(&images[index + 1], &images[index], options)?;
         shifts[index] = shifts[index + 1].offset(step.x, step.y);
     }
 
     for index in reference + 1..images.len() {
-        let step = shift(&images[index - 1], &images[index], options);
+        let step = shift(&images[index - 1], &images[index], options)?;
         shifts[index] = shifts[index - 1].offset(step.x, step.y);
     }
 
-    shifts
+    Ok(shifts)
 }
 
 /// How many times the image is halved. Ward descends `shift_bits` times whatever
@@ -209,22 +211,40 @@ mod tests {
     fn an_exposure_with_no_usable_signal_reports_no_shift() {
         let flat = Gray::from_vec(vec![128; 160 * 120], 160, 120);
 
-        assert_eq!(shift(&flat, &flat, &Options::default()), Shift::ZERO);
+        assert_eq!(shift(&flat, &flat, &Options::default()), Ok(Shift::ZERO));
     }
 
     #[test]
     fn a_single_pixel_image_reports_no_shift() {
         let dot = Gray::from_vec(vec![200], 1, 1);
 
-        assert_eq!(shift(&dot, &dot, &Options::default()), Shift::ZERO);
+        assert_eq!(shift(&dot, &dot, &Options::default()), Ok(Shift::ZERO));
     }
 
     #[test]
-    #[should_panic(expected = "cannot align a 4x4 exposure against a 5x5 one")]
-    fn aligning_mismatched_sizes_is_rejected() {
+    fn aligning_mismatched_sizes_is_an_error() {
         let small = Gray::from_vec(vec![0; 16], 4, 4);
         let large = Gray::from_vec(vec![0; 25], 5, 5);
 
-        shift(&small, &large, &Options::default());
+        assert_eq!(
+            shift(&small, &large, &Options::default()),
+            Err(Error::SizeMismatch {
+                reference: (4, 4),
+                target: (5, 5)
+            })
+        );
+    }
+
+    #[test]
+    fn a_reference_outside_the_stack_is_an_error() {
+        let one = [Gray::from_vec(vec![0; 4], 2, 2)];
+
+        assert_eq!(
+            align_stack(&one, 3, &Options::default()),
+            Err(Error::NoSuchReference {
+                reference: 3,
+                exposures: 1
+            })
+        );
     }
 }

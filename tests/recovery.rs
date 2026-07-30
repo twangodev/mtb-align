@@ -17,6 +17,7 @@ fn recovered(offset: Shift, options: &Options) -> Shift {
         &window(WIDTH, HEIGHT, offset),
         options,
     )
+    .expect("the windows are the same size")
 }
 
 #[test]
@@ -95,7 +96,7 @@ fn noise_does_not_move_the_answer() {
         let target = noisy(&window(WIDTH, HEIGHT, offset), amplitude, 0x51ED);
 
         assert_eq!(
-            shift(&reference, &target, &Options::default()),
+            shift(&reference, &target, &Options::default()).unwrap(),
             offset,
             "noise of ±{amplitude} broke the alignment"
         );
@@ -113,7 +114,7 @@ fn a_change_of_exposure_does_not_move_the_answer() {
         let target = reexpose(&window(WIDTH, HEIGHT, offset), stops);
 
         assert_eq!(
-            shift(&reference, &target, &Options::default()),
+            shift(&reference, &target, &Options::default()).unwrap(),
             offset,
             "{stops:+} stops broke the alignment"
         );
@@ -126,7 +127,10 @@ fn noise_and_a_change_of_exposure_together_do_not_move_the_answer() {
     let offset = Shift::new(-8, -22);
     let target = noisy(&reexpose(&window(WIDTH, HEIGHT, offset), -1.0), 3, 0xB0B);
 
-    assert_eq!(shift(&reference, &target, &Options::default()), offset);
+    assert_eq!(
+        shift(&reference, &target, &Options::default()).unwrap(),
+        offset
+    );
 }
 
 /// Ward's Figure 3: an area on the threshold decided by the sensor, not the
@@ -143,7 +147,7 @@ fn the_exclusion_band_rescues_an_exposure_with_a_noisy_plateau() {
         ..Options::default()
     };
     assert_eq!(
-        shift(&reference, &target, &excluding),
+        shift(&reference, &target, &excluding).unwrap(),
         offset,
         "the noisy plateau should have been excluded"
     );
@@ -153,7 +157,7 @@ fn the_exclusion_band_rescues_an_exposure_with_a_noisy_plateau() {
         ..Options::default()
     };
     assert_ne!(
-        shift(&reference, &target, &trusting),
+        shift(&reference, &target, &trusting).unwrap(),
         offset,
         "without the exclusion band the plateau should have swamped the signal"
     );
@@ -182,12 +186,15 @@ fn a_mostly_clipped_frame_needs_a_lower_percentile() {
     let target = window_with_clipped_sky(WIDTH, HEIGHT, offset, CLIPPED);
 
     assert_eq!(threshold(&reference, Percentile::MEDIAN), 256);
-    assert_ne!(shift(&reference, &target, &Options::default()), offset);
+    assert_ne!(
+        shift(&reference, &target, &Options::default()).unwrap(),
+        offset
+    );
 
     let lower = Options {
         percentile: Percentile::SEVENTEENTH,
         ..Options::default()
     };
     assert!(threshold(&reference, Percentile::SEVENTEENTH) < 256);
-    assert_eq!(shift(&reference, &target, &lower), offset);
+    assert_eq!(shift(&reference, &target, &lower).unwrap(), offset);
 }

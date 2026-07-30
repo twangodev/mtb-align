@@ -30,7 +30,7 @@ fn main() {
     let build = start.elapsed();
 
     let start = Instant::now();
-    let found = shift(&reference, &target, &options);
+    let found = shift(&reference, &target, &options).expect("same size");
     let align = start.elapsed();
 
     println!(

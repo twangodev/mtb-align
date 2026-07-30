@@ -34,12 +34,15 @@ fn bracket() -> Vec<Gray> {
 fn a_stack_of_one_never_moves() {
     let single = vec![window(WIDTH, HEIGHT, Shift::ZERO)];
 
-    assert_eq!(align_stack(&single, 0, &Options::default()), [Shift::ZERO]);
+    assert_eq!(
+        align_stack(&single, 0, &Options::default()).unwrap(),
+        [Shift::ZERO]
+    );
 }
 
 #[test]
 fn every_frame_is_placed_against_the_reference() {
-    let shifts = align_stack(&bracket(), 0, &Options::default());
+    let shifts = align_stack(&bracket(), 0, &Options::default()).unwrap();
 
     assert_eq!(shifts, HANDHELD, "the first frame is the reference");
 }
@@ -50,7 +53,7 @@ fn the_reference_can_sit_anywhere_in_the_stack() {
     let stack = bracket();
 
     for reference in 0..HANDHELD.len() {
-        let shifts = align_stack(&stack, reference, &Options::default());
+        let shifts = align_stack(&stack, reference, &Options::default()).unwrap();
         let expected: Vec<Shift> = HANDHELD
             .iter()
             .map(|offset| {
@@ -70,7 +73,7 @@ fn the_reference_can_sit_anywhere_in_the_stack() {
 #[test]
 fn the_aligned_stack_shares_a_crop_every_frame_covers() {
     let stack = bracket();
-    let shifts = align_stack(&stack, 0, &Options::default());
+    let shifts = align_stack(&stack, 0, &Options::default()).unwrap();
 
     let crop = common_crop(&shifts, WIDTH, HEIGHT);
     assert_eq!(
@@ -96,13 +99,7 @@ fn the_aligned_stack_shares_a_crop_every_frame_covers() {
 }
 
 #[test]
-#[should_panic(expected = "no exposure 5 in a stack of 5")]
-fn a_reference_outside_the_stack_is_rejected() {
-    align_stack(&bracket(), 5, &Options::default());
-}
-
-#[test]
-#[should_panic(expected = "no exposure 0 in a stack of 0")]
-fn an_empty_stack_is_rejected() {
-    align_stack(&[], 0, &Options::default());
+fn a_reference_outside_the_stack_is_an_error() {
+    assert!(align_stack(&bracket(), 5, &Options::default()).is_err());
+    assert!(align_stack(&[], 0, &Options::default()).is_err());
 }

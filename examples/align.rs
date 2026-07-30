@@ -44,7 +44,8 @@ fn main() {
 
     // The middle frame shares most detail with both ends.
     let reference = grays.len() / 2;
-    let shifts = align_stack(&grays, reference, &Options::default());
+    let shifts = align_stack(&grays, reference, &Options::default())
+        .unwrap_or_else(|failure| panic!("{failure}"));
     let crop = common_crop(&shifts, width, height);
 
     println!(

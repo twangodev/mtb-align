@@ -241,7 +241,7 @@ fn the_search_agrees_with_opencv() {
         };
 
         assert_eq!(
-            shift(reference, target, options),
+            shift(reference, target, options).unwrap(),
             *expected,
             "{}",
             case.label()

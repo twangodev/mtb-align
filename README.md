@@ -17,7 +17,7 @@ let exposures: Vec<Gray> = frames
     .map(|frame| Gray::from_rgb(frame.as_raw(), width, height))
     .collect();
 
-let shifts = align_stack(&exposures, exposures.len() / 2, &Options::default());
+let shifts = align_stack(&exposures, exposures.len() / 2, &Options::default())?;
 let crop = common_crop(&shifts, width, height);
 ```
 

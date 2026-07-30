@@ -14,7 +14,7 @@
 //! };
 //! let options = Options { bits: 4, ..Options::default() };
 //!
-//! assert_eq!(shift(&read(0, 0), &read(5, -3), &options), Shift::new(5, -3));
+//! assert_eq!(shift(&read(0, 0), &read(5, -3), &options), Ok(Shift::new(5, -3)));
 //! ```
 //!
 //! [`align_stack`] does a whole bracket, [`common_crop`] the region left over.
@@ -22,6 +22,7 @@
 mod align;
 mod bitmap;
 mod difference;
+mod error;
 mod geometry;
 mod gray;
 mod shrink;
@@ -31,6 +32,7 @@ mod threshold;
 pub use align::{Options, align_stack, shift};
 pub use bitmap::Bitmap;
 pub use difference::disagreement;
+pub use error::Error;
 pub use geometry::{Rect, Shift, common_crop};
 pub use gray::Gray;
 pub use shrink::{Shrink, shrink2};
