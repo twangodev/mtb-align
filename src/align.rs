@@ -147,168 +147,8 @@ fn refine(reference: &Bitmaps, target: &Bitmaps, around: Shift) -> Shift {
 mod tests {
     use super::*;
 
-    /// A synthetic scene: value noise summed over three cell sizes, so the
-    /// coarse levels of the pyramid carry structure and the finest carries
-    /// detail sharp enough that a one-pixel error costs something.
-    ///
-    /// A smooth analytic scene makes a poor fixture. Gentle gradients cross the
-    /// median in the same place under a small shift, so the bitmaps come out
-    /// bit-identical and every candidate ties at zero — which says more about
-    /// the fixture than the search.
-    fn scene(x: i64, y: i64) -> u8 {
-        let value = 0.5 * octave(x, y, 64) + 0.3 * octave(x, y, 16) + 0.2 * octave(x, y, 4);
-
-        (value.clamp(0.0, 1.0) * 255.0) as u8
-    }
-
-    /// One octave of value noise: hashed lattice corners, smoothstepped between.
-    fn octave(x: i64, y: i64, cell: i64) -> f64 {
-        let (i, j) = (x.div_euclid(cell), y.div_euclid(cell));
-        let smooth = |t: f64| t * t * (3.0 - 2.0 * t);
-        let across = smooth(x as f64 / cell as f64 - i as f64);
-        let down = smooth(y as f64 / cell as f64 - j as f64);
-
-        let corner = |dx, dy| lattice(i + dx, j + dy);
-        let top = corner(0, 0) + (corner(1, 0) - corner(0, 0)) * across;
-        let bottom = corner(0, 1) + (corner(1, 1) - corner(0, 1)) * across;
-
-        top + (bottom - top) * down
-    }
-
-    fn lattice(x: i64, y: i64) -> f64 {
-        let mut hash = (x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
-            ^ (y as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
-        hash ^= hash >> 29;
-        hash = hash.wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        hash ^= hash >> 32;
-
-        (hash >> 11) as f64 / (1u64 << 53) as f64
-    }
-
-    /// Reads the scene through a window moved by `offset`, so both exposures are
-    /// complete images. Padding a translated copy instead would invent an edge
-    /// that the alignment could cheat off.
-    fn window(width: usize, height: usize, offset: Shift) -> Gray {
-        let samples = (0..width * height)
-            .map(|i| {
-                let x = (i % width) as i64 + offset.x as i64;
-                let y = (i / width) as i64 + offset.y as i64;
-                scene(x, y)
-            })
-            .collect();
-
-        Gray::from_vec(samples, width, height)
-    }
-
-    #[test]
-    fn an_exposure_needs_no_shift_against_itself() {
-        let image = window(160, 120, Shift::ZERO);
-
-        assert_eq!(
-            shift(&image, &image, &Options::default()),
-            Shift::ZERO,
-            "an image is already aligned with itself"
-        );
-    }
-
-    #[test]
-    fn a_known_translation_comes_back_exactly() {
-        let reference = window(400, 300, Shift::ZERO);
-
-        for offset in [
-            Shift::new(1, 0),
-            Shift::new(0, -1),
-            Shift::new(7, 5),
-            Shift::new(-11, 3),
-            Shift::new(-13, -9),
-            Shift::new(21, -34),
-        ] {
-            let target = window(400, 300, offset);
-
-            assert_eq!(
-                shift(&reference, &target, &Options::default()),
-                offset,
-                "failed to recover {offset:?}"
-            );
-        }
-    }
-
-    /// Six bits of shift reach 63 pixels, which is the last offset the default
-    /// search can express.
-    #[test]
-    fn the_search_reaches_the_edge_of_its_range() {
-        let reference = window(400, 300, Shift::ZERO);
-        let offset = Shift::new(63, -63);
-
-        assert_eq!(
-            shift(&reference, &window(400, 300, offset), &Options::default()),
-            offset
-        );
-    }
-
-    #[test]
-    fn fewer_bits_search_a_smaller_range() {
-        let reference = window(400, 300, Shift::ZERO);
-        let options = Options {
-            bits: 3,
-            ..Options::default()
-        };
-        let reachable = Shift::new(7, -7);
-
-        assert_eq!(
-            shift(&reference, &window(400, 300, reachable), &options),
-            reachable
-        );
-
-        let beyond = Shift::new(40, 0);
-        assert_ne!(
-            shift(&reference, &window(400, 300, beyond), &options),
-            beyond
-        );
-    }
-
-    #[test]
-    fn both_shrink_conventions_recover_the_same_translation() {
-        let reference = window(200, 150, Shift::ZERO);
-        let offset = Shift::new(-9, 6);
-        let target = window(200, 150, offset);
-
-        for shrink in [Shrink::Average, Shrink::Subsample] {
-            let options = Options {
-                shrink,
-                ..Options::default()
-            };
-
-            assert_eq!(shift(&reference, &target, &options), offset, "{shrink:?}");
-        }
-    }
-
-    /// Every pixel sits on the threshold, so every pixel is excluded and all
-    /// nine candidates tie at zero disagreement. The honest answer is that
-    /// nothing can be said, which is what no movement means.
-    #[test]
-    fn an_exposure_with_no_usable_signal_reports_no_shift() {
-        let flat = Gray::from_vec(vec![128; 160 * 120], 160, 120);
-
-        assert_eq!(shift(&flat, &flat, &Options::default()), Shift::ZERO);
-    }
-
-    #[test]
-    fn a_single_pixel_image_reports_no_shift() {
-        let dot = Gray::from_vec(vec![200], 1, 1);
-
-        assert_eq!(shift(&dot, &dot, &Options::default()), Shift::ZERO);
-    }
-
-    #[test]
-    #[should_panic(expected = "cannot align a 4x4 exposure against a 5x5 one")]
-    fn aligning_mismatched_sizes_is_rejected() {
-        let small = Gray::from_vec(vec![0; 16], 4, 4);
-        let large = Gray::from_vec(vec![0; 25], 5, 5);
-
-        shift(&small, &large, &Options::default());
-    }
-
+    /// Recovering real offsets from a real scene lives in `tests/recovery.rs`;
+    /// what is left here is the search's own bookkeeping.
     #[test]
     fn the_defaults_are_wards_recommendations() {
         let options = Options::default();
@@ -337,5 +177,44 @@ mod tests {
     fn an_extreme_aspect_ratio_stops_before_a_level_vanishes() {
         assert_eq!(shrinks(1000, 3, 6), 1);
         assert_eq!(shrinks(1000, 1, 6), 0);
+    }
+
+    #[test]
+    fn a_pyramid_keeps_the_source_and_one_plane_per_halving() {
+        let levels = pyramid(
+            &Gray::from_vec(vec![0; 64 * 64], 64, 64),
+            3,
+            Shrink::Average,
+        );
+
+        assert_eq!(levels.len(), 4);
+        assert_eq!((levels[0].width(), levels[0].height()), (64, 64));
+        assert_eq!((levels[3].width(), levels[3].height()), (8, 8));
+    }
+
+    /// Every pixel sits on the threshold, so every pixel is excluded and all
+    /// nine candidates tie at zero disagreement. The honest answer is that
+    /// nothing can be said, which is what no movement means.
+    #[test]
+    fn an_exposure_with_no_usable_signal_reports_no_shift() {
+        let flat = Gray::from_vec(vec![128; 160 * 120], 160, 120);
+
+        assert_eq!(shift(&flat, &flat, &Options::default()), Shift::ZERO);
+    }
+
+    #[test]
+    fn a_single_pixel_image_reports_no_shift() {
+        let dot = Gray::from_vec(vec![200], 1, 1);
+
+        assert_eq!(shift(&dot, &dot, &Options::default()), Shift::ZERO);
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot align a 4x4 exposure against a 5x5 one")]
+    fn aligning_mismatched_sizes_is_rejected() {
+        let small = Gray::from_vec(vec![0; 16], 4, 4);
+        let large = Gray::from_vec(vec![0; 25], 5, 5);
+
+        shift(&small, &large, &Options::default());
     }
 }
