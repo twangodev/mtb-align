@@ -4,8 +4,8 @@
 
 mod common;
 
-use common::{noisy, reexpose, window, window_with_fixed_pattern_plateau};
-use mtb_align::{Options, Shift, Shrink, shift};
+use common::{noisy, reexpose, window, window_with_clipped_sky, window_with_fixed_pattern_plateau};
+use mtb_align::{Options, Percentile, Shift, Shrink, shift, threshold};
 use proptest::prelude::*;
 
 const WIDTH: usize = 400;
@@ -169,4 +169,25 @@ proptest! {
 
         prop_assert_eq!(recovered(offset, &Options::default()), offset);
     }
+}
+
+/// Clipping more than half the frame runs the median past the top of the range,
+/// so `value > 256` is false everywhere: an empty bitmap, every candidate tied,
+/// and a confident zero. Ward's lower percentile cuts among what survived.
+#[test]
+fn a_mostly_clipped_frame_needs_a_lower_percentile() {
+    const CLIPPED: f64 = 0.6;
+    let offset = Shift::new(7, -5);
+    let reference = window_with_clipped_sky(WIDTH, HEIGHT, Shift::ZERO, CLIPPED);
+    let target = window_with_clipped_sky(WIDTH, HEIGHT, offset, CLIPPED);
+
+    assert_eq!(threshold(&reference, Percentile::MEDIAN), 256);
+    assert_ne!(shift(&reference, &target, &Options::default()), offset);
+
+    let lower = Options {
+        percentile: Percentile::SEVENTEENTH,
+        ..Options::default()
+    };
+    assert!(threshold(&reference, Percentile::SEVENTEENTH) < 256);
+    assert_eq!(shift(&reference, &target, &lower), offset);
 }

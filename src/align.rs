@@ -23,6 +23,9 @@ pub struct Options {
     pub bits: u32,
     /// How far from the threshold a sample must sit before it is trusted.
     pub tolerance: u8,
+    /// A frame more than half clipped puts the median past the top of the range
+    /// and empties the bitmap; Ward's 17th or 83rd moves the cut back among the
+    /// samples that survived.
     pub percentile: Percentile,
     pub shrink: Shrink,
 }
@@ -83,6 +86,9 @@ pub fn shift(reference: &Gray, target: &Gray, options: &Options) -> Shift {
 /// How far each exposure has to move to sit on `images[reference]`, measured
 /// between *adjacent* exposures and accumulated: one percentile fits two
 /// neighbours well and the ends of a bracket badly.
+///
+/// So `images` has to be in exposure order, which is not always the order the
+/// camera wrote the files in.
 ///
 /// Panics unless `reference` indexes `images`, or if the images differ in size.
 pub fn align_stack(images: &[Gray], reference: usize, options: &Options) -> Vec<Shift> {

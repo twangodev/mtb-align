@@ -47,6 +47,15 @@ pub fn window_with_fixed_pattern_plateau(width: usize, height: usize, offset: Sh
     Gray::from_vec(samples, width, height)
 }
 
+/// A window whose top `fraction` is blown out to pure white.
+pub fn window_with_clipped_sky(width: usize, height: usize, offset: Shift, fraction: f64) -> Gray {
+    let sky = (height as f64 * fraction) as usize;
+    let mut samples = window(width, height, offset).as_slice().to_vec();
+    samples[..sky * width].fill(255);
+
+    Gray::from_vec(samples, width, height)
+}
+
 /// A monotonic tone change, as a different shutter speed makes: scale the
 /// linear signal, then put it back through the display gamma. Highlights clip
 /// once `stops` is positive, which is the one part that is not monotonic.

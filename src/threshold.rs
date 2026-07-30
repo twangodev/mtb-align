@@ -33,6 +33,11 @@ impl Default for Percentile {
 
 /// The sample value the bitmaps are cut at. A `u16` because it can land one past
 /// the range: an image of nothing but 255s gives 256, as it does in OpenCV.
+///
+/// A result of 0 or 256 means every sample fell on one side of the cut, so the
+/// threshold bitmap is empty and the exposure carries nothing to align on. More
+/// than half a frame clipped does this. Callers wanting to detect it can compare
+/// against those two values before aligning.
 pub fn threshold(gray: &Gray, percentile: Percentile) -> u16 {
     let histogram = histogram(gray.as_slice());
 
